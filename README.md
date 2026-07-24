@@ -1,6 +1,6 @@
 # FlipX — RuneLite Plugin
 
-RuneLite companion plugin for [FlipX](https://flipx.gg) (web app: [`osrs-flip-app`](../osrs-flip-app)). It does two things once paired:
+RuneLite companion plugin for [FlipX](https://flipx.gg). It does two things once paired:
 
 1. **Portfolio sync** — observes Grand Exchange offer changes in-game and syncs them to the web app for portfolio analytics, beat-the-market stats, and flip matching.
 2. **Market browsing** — brings the web app's discovery workflow into RuneLite: tier-scoped opportunities, quick presets, search, item detail, a slot optimizer, watchlist sync, and a display-only Grand Exchange copilot overlay.
@@ -103,6 +103,7 @@ Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; Flip
 | `GET /api/plugin/entitlements` | Tier limits that drive the UI (refresh interval, slots, presets, etc.) |
 | `GET /api/plugin/slots/live` | Enriched open GE offers with overbid/undercut badges |
 | `GET /api/plugin/session` | Live session GP/hr and flip stats |
+| `GET /api/plugin/analytics/items` | Session-scoped item profit breakdown (`from`, `limit`) |
 | `POST /api/plugin/import/flipping-utilities` | Import Flipping Utilities JSON history |
 | `GET /api/plugin/recipes/opportunities` | Ranked recipe flip margins (Ultra+) |
 | `POST /api/plugin/market/query` | Filtered/ranked opportunities + summary + top ROI movers |
@@ -201,6 +202,6 @@ Build output: `build/libs/flipx-plugin-1.0.0-all.jar`
 
 ## Related
 
-- Web app: [FlipX](https://flipx.gg) · [osrs-flip-app](../osrs-flip-app)
+- Web app: [FlipX](https://flipx.gg)
 - Ingest API: `POST /api/ingest/ge-events`
 - Pairing API: `POST /api/devices/pair`

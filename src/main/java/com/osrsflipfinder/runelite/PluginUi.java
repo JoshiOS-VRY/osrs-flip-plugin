@@ -255,6 +255,36 @@ final class PluginUi
 		return label;
 	}
 
+	/** Session stats hero — gold top rule, large signed profit, caption. */
+	static JPanel sessionProfitHero(JLabel profitLabel, String caption)
+	{
+		JPanel hero = new SidebarContentPanel();
+		hero.setLayout(new BoxLayout(hero, BoxLayout.Y_AXIS));
+		hero.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		hero.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(2, 0, 0, 0, GOLD),
+				BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1, true)
+			),
+			new EmptyBorder(8, 8, 6, 8)
+		));
+		hero.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JLabel captionLabel = new JLabel(caption, JLabel.CENTER);
+		captionLabel.setFont(FontManager.getRunescapeSmallFont());
+		captionLabel.setForeground(GOLD);
+		captionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+		profitLabel.setHorizontalAlignment(JLabel.CENTER);
+		profitLabel.setFont(FontManager.getRunescapeBoldFont().deriveFont(18f));
+		profitLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+		hero.add(captionLabel);
+		hero.add(profitLabel);
+		SidebarContentPanel.lockWidthFixed(hero, 56);
+		return hero;
+	}
+
 	/** Four-up hero metrics in a 2x2 grid — fits large GP values in the narrow sidebar. */
 	static JPanel detailHeroGrid(JComponent... stats)
 	{

@@ -56,7 +56,7 @@ Plugin Hub pins a **commit hash**, not a Git tag — but tagging makes releases 
 Create `plugins/flipx` (filename = plugin id, lowercase, no spaces):
 
 ```
-repository=https://github.com/YOUR_ORG/osrs-flip-plugin.git
+repository=https://github.com/JoshiOS-VRY/osrs-flip-plugin.git
 commit=FULL_40_CHARACTER_COMMIT_SHA
 ```
 
