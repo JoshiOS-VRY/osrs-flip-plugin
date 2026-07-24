@@ -71,6 +71,18 @@
 
 You cannot verify plugin behavior yourself. Even if you have screen-capture or computer-use tools available, **do not use them to interact with RuneScape** — automating game input violates Jagex's third-party client guidelines and will get the user's account banned. Only the user can confirm a plugin works in-game.
 
+## Sidebar UI (PluginPanel)
+
+Follow RuneLite's built-in sidebar model — do not fight it with custom Swing hacks.
+
+- Extend `PluginPanel` with the default constructor (`super()` / `wrap=true`). Build content into `BorderLayout.NORTH` (see Loot Tracker's `LootTrackerPanel`).
+- Content width is **`PluginPanel.PANEL_WIDTH` (225px)**. The wrapped panel is **242px** wide to reserve **`PluginPanel.SCROLLBAR_WIDTH` (17px)** layout gutter beside content.
+- **Do not** add nested `JScrollPane`s, manual scrollbar gutters, or `setPreferredSize` on `JScrollBar`. RuneLite LAF (`RuneLiteLAF.properties`) paints a **7px** dark scrollbar via `RuneLiteScrollBarUI`; overriding width triggers native OS scrollbars (blue/fat on macOS).
+- If you call `SwingUtilities.updateComponentTreeUI()` on the panel, call `reapplyScrollBarLaf()` afterward — tree UI refresh resets scrollbar LAF on macOS.
+- **Do not** use `GridLayout` without fixed row heights inside views that can stretch (`CardLayout`, tall parents) — cells expand vertically and break stat cards.
+- Use `FixedWidthPanel` / width-only max size patterns; never lock `maximumSize.height` to `preferredSize.height` on growing containers.
+- Wrap card sub-views with `BorderLayout.NORTH` so `CardLayout` does not stretch them to viewport height.
+
 After completing a task, do not declare it done. Instead:
 
 1. Offer to launch RuneLite for the user by running `./gradlew run` from the plugin's root directory.

@@ -2,6 +2,8 @@ plugins {
 	id 'java'
 }
 
+version = '1.0.0'
+
 repositories {
 	mavenLocal()
 	maven {
@@ -14,7 +16,7 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.example.ExamplePluginTest'
+def pluginMainClass = 'com.osrsflipfinder.runelite.OsrsFlipFinderPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -23,36 +25,51 @@ dependencies {
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
 	testImplementation 'junit:junit:4.12'
+	testImplementation 'org.mockito:mockito-core:3.12.4'
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
+	testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 }
 
-group = 'com.example'
+group = 'com.osrsflipfinder'
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
 	options.release.set(11)
 }
 
+tasks.withType(Test).configureEach {
+	useJUnit()
+}
+
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
 
-	jvmArgs "-ea"
+	jvmArgs "-ea",
+		"-Dflipx.baseUrl=http://localhost:3000",
+		"--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED",
+		"--add-opens=java.base/java.net=ALL-UNNAMED",
+		"--add-opens=java.base/java.io=ALL-UNNAMED"
 	args "--developer-mode", "--debug"
 }
 
+tasks.register('installSideloaded', Copy) {
+	dependsOn shadowJar
+	from shadowJar.archiveFile
+	into "${System.getProperty('user.home')}/.runelite/sideloaded-plugins"
+}
+
 tasks.register('shadowJar', Jar) {
-	dependsOn configurations.testRuntimeClasspath
+	dependsOn configurations.runtimeClasspath
 	manifest {
-		attributes('Main-Class': pluginMainClass, 'Multi-Release': true)
+		attributes('Main-Class': 'com.osrsflipfinder.runelite.OsrsFlipFinderPlugin', 'Multi-Release': true)
 	}
 
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	from sourceSets.main.output
-	from sourceSets.test.output
 	from {
-		configurations.testRuntimeClasspath.collect { file ->
+		configurations.runtimeClasspath.collect { file ->
 			file.isDirectory() ? file : zipTree(file)
 		}
 	}
