@@ -62,7 +62,7 @@ commit=FULL_40_CHARACTER_COMMIT_SHA
 
 Replace:
 
-- `YOUR_ORG/osrs-flip-plugin` with the actual public repo URL.
+- `JoshiOS-VRY/osrs-flip-plugin` with the actual public repo URL.
 - `commit=` with the **full** SHA of the commit you want users to receive (usually latest on `main` after CI passes).
 
 Example:
