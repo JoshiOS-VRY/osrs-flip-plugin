@@ -128,7 +128,7 @@ EventMapper           → maps RuneLite offer → ingest schema
 IngestClient          → batches events, POSTs with retry
 PairingService        → exchanges 6-digit code for API key
 PluginApiClient       → Bearer JSON client for /api/plugin/* routes
-OpportunitiesClient   → polls entitlements + market query on tier interval
+OpportunitiesClient   → polls `/api/plugin/entitlements` every **20s** while paired; market query on wiki-aligned interval when Market tab is open
 CopilotClient         → per-item copilot with a short TTL cache
 WatchlistClient       → reads/syncs watchlists
 FlipFinderPanel       → tabbed sidebar UI (Sync | Market)

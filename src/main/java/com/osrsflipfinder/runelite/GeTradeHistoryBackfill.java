@@ -35,6 +35,7 @@ public class GeTradeHistoryBackfill
 
 	private final Client client;
 	private final ConfigManager configManager;
+	private final FlipFinderConfig config;
 	private final Gson gson;
 	private final IngestClient ingestClient;
 	private final ItemManager itemManager;
@@ -43,6 +44,7 @@ public class GeTradeHistoryBackfill
 	GeTradeHistoryBackfill(
 		Client client,
 		ConfigManager configManager,
+		FlipFinderConfig config,
 		Gson gson,
 		IngestClient ingestClient,
 		ItemManager itemManager
@@ -50,6 +52,7 @@ public class GeTradeHistoryBackfill
 	{
 		this.client = client;
 		this.configManager = configManager;
+		this.config = config;
 		this.gson = gson;
 		this.ingestClient = ingestClient;
 		this.itemManager = itemManager;
@@ -96,9 +99,18 @@ public class GeTradeHistoryBackfill
 			: null;
 
 		Instant watermark = readWatermark(accountHashValue);
-		Instant cutoff = watermark.equals(Instant.EPOCH)
-			? Instant.EPOCH
-			: watermark.minus(WATERMARK_OVERLAP_MINUTES, ChronoUnit.MINUTES);
+		Instant cutoff;
+		if (watermark.equals(Instant.EPOCH))
+		{
+			// First sync for this Jagex account on this RuneLite install: do not upload the
+			// entire profile GE history into a newly paired FlipX account — only trades from
+			// pairing onward (plus overlap for clock skew).
+			cutoff = initialBackfillCutoff();
+		}
+		else
+		{
+			cutoff = watermark.minus(WATERMARK_OVERLAP_MINUTES, ChronoUnit.MINUTES);
+		}
 		Instant maxTradeTime = watermark;
 
 		int enqueued = 0;
@@ -132,6 +144,23 @@ public class GeTradeHistoryBackfill
 		{
 			writeWatermark(accountHashValue, maxTradeTime);
 		}
+	}
+
+	private Instant initialBackfillCutoff()
+	{
+		String pairedAt = config.pairedAt();
+		if (pairedAt != null && !pairedAt.isBlank())
+		{
+			try
+			{
+				return Instant.parse(pairedAt).minus(WATERMARK_OVERLAP_MINUTES, ChronoUnit.MINUTES);
+			}
+			catch (RuntimeException ignored)
+			{
+				// fall through
+			}
+		}
+		return Instant.now().minus(WATERMARK_OVERLAP_MINUTES, ChronoUnit.MINUTES);
 	}
 
 	private Instant readWatermark(String accountHash)

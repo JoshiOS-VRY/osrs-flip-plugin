@@ -446,6 +446,10 @@ public class FlipFinderPanel extends PluginPanel
 			disconnectButton.setEnabled(PairingCredentials.isPaired(config));
 			applySectionActiveStates();
 			marketPanel.refreshUi();
+			if (isPairedForMarket())
+			{
+				opportunitiesClient.requestEntitlementsRefresh();
+			}
 			refreshSectionData(currentSection);
 		});
 	}

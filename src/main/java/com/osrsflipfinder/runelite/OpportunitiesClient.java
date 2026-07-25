@@ -2,6 +2,7 @@ package com.osrsflipfinder.runelite;
 
 import java.io.IOException;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -13,9 +14,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Polls plugin entitlements and the market query on each tier-scoped refresh
- * cycle. Polling pauses when the Market tab is not visible to respect API
- * load, and resumes with an immediate refresh when shown.
+ * Polls plugin entitlements on a fixed interval while paired, and the market query
+ * on each tier-scoped refresh cycle when the Market tab is visible.
  */
 @Slf4j
 @Singleton
@@ -23,6 +23,8 @@ public class OpportunitiesClient
 {
 	private static final int MIN_REFRESH_SECONDS = 15;
 	private static final int POLL_TICK_SECONDS = 5;
+	/** Tier changes sync while paired, independent of wiki-aligned market refresh. */
+	private static final int ENTITLEMENTS_POLL_SECONDS = 20;
 
 	private final PluginApiClient apiClient;
 	private final FlipFinderConfig config;
@@ -42,12 +44,15 @@ public class OpportunitiesClient
 	private volatile MarketQueryRequest query = new MarketQueryRequest();
 	private volatile boolean active = false;
 	private volatile long nextRefreshAtMs = 0;
+	private volatile long nextEntitlementsPollAtMs = 0;
 	@Getter
 	private volatile long refreshIntervalMs = MIN_REFRESH_SECONDS * 1000L;
 	private final AtomicBoolean fetchInProgress = new AtomicBoolean(false);
+	private final AtomicBoolean entitlementsFetchInProgress = new AtomicBoolean(false);
 
+	private final CopyOnWriteArrayList<Consumer<PluginEntitlements>> entitlementsListeners =
+		new CopyOnWriteArrayList<>();
 	private volatile Consumer<MarketQueryResponse> dataListener = data -> {};
-	private volatile Consumer<PluginEntitlements> entitlementsListener = entitlements -> {};
 	private volatile Consumer<PluginState> stateListener = state -> {};
 	private volatile Consumer<String> errorListener = message -> {};
 
@@ -77,7 +82,26 @@ public class OpportunitiesClient
 
 	void setEntitlementsListener(Consumer<PluginEntitlements> listener)
 	{
-		this.entitlementsListener = listener != null ? listener : entitlements -> {};
+		entitlementsListeners.clear();
+		if (listener != null)
+		{
+			entitlementsListeners.add(listener);
+		}
+	}
+
+	void addEntitlementsListener(Consumer<PluginEntitlements> listener)
+	{
+		if (listener != null)
+		{
+			entitlementsListeners.add(listener);
+		}
+	}
+
+	/** Immediate entitlements fetch (e.g. after pairing). */
+	void requestEntitlementsRefresh()
+	{
+		nextEntitlementsPollAtMs = 0;
+		executorService.execute(this::pollEntitlementsIfDue);
 	}
 
 	void setStateListener(Consumer<PluginState> listener)
@@ -94,8 +118,9 @@ public class OpportunitiesClient
 	{
 		if (pollTask == null)
 		{
+			nextEntitlementsPollAtMs = 0;
 			pollTask = executorService.scheduleWithFixedDelay(
-				this::tick,
+				this::pollLoop,
 				POLL_TICK_SECONDS,
 				POLL_TICK_SECONDS,
 				TimeUnit.SECONDS
@@ -175,10 +200,89 @@ public class OpportunitiesClient
 	void requestImmediateRefresh()
 	{
 		nextRefreshAtMs = 0;
-		executorService.execute(this::tick);
+		nextEntitlementsPollAtMs = 0;
+		executorService.execute(this::pollLoop);
 	}
 
-	private void tick()
+	private void pollLoop()
+	{
+		pollEntitlementsIfDue();
+		tickMarketIfDue();
+	}
+
+	private void pollEntitlementsIfDue()
+	{
+		if (!apiClient.isConfigured())
+		{
+			return;
+		}
+		long now = System.currentTimeMillis();
+		if (now < nextEntitlementsPollAtMs)
+		{
+			return;
+		}
+		if (!entitlementsFetchInProgress.compareAndSet(false, true))
+		{
+			return;
+		}
+		try
+		{
+			refreshEntitlementsOnly();
+		}
+		finally
+		{
+			entitlementsFetchInProgress.set(false);
+		}
+	}
+
+	private void refreshEntitlementsOnly()
+	{
+		try
+		{
+			PluginEntitlements freshEntitlements = apiClient.get(
+				"/api/plugin/entitlements",
+				PluginEntitlements.class
+			);
+			boolean changed = applyEntitlementsUpdate(freshEntitlements);
+			if (changed && active)
+			{
+				nextRefreshAtMs = 0;
+			}
+			nextEntitlementsPollAtMs =
+				System.currentTimeMillis() + ENTITLEMENTS_POLL_SECONDS * 1000L;
+		}
+		catch (PluginApiException e)
+		{
+			nextEntitlementsPollAtMs =
+				System.currentTimeMillis() + ENTITLEMENTS_POLL_SECONDS * 1000L;
+			if (e.getState() == PluginState.REPAIR_REQUIRED)
+			{
+				entitlements = null;
+			}
+		}
+		catch (IOException e)
+		{
+			nextEntitlementsPollAtMs =
+				System.currentTimeMillis() + ENTITLEMENTS_POLL_SECONDS * 1000L;
+			log.debug("Entitlements poll failed", e);
+		}
+	}
+
+	private boolean applyEntitlementsUpdate(PluginEntitlements freshEntitlements)
+	{
+		boolean changed = entitlementsChanged(entitlements, freshEntitlements);
+		entitlements = freshEntitlements;
+		if (changed)
+		{
+			for (Consumer<PluginEntitlements> listener : entitlementsListeners)
+			{
+				listener.accept(freshEntitlements);
+			}
+		}
+		return changed;
+	}
+
+	private void tickMarketIfDue()
 	{
 		if (!active || !apiClient.isConfigured())
 		{
@@ -195,7 +299,7 @@ public class OpportunitiesClient
 
 		try
 		{
-			refreshNow();
+			refreshMarketNow();
 		}
 		finally
 		{
@@ -203,19 +307,19 @@ public class OpportunitiesClient
 		}
 	}
 
-	private void refreshNow()
+	private void refreshMarketNow()
 	{
 		try
 		{
-			PluginEntitlements freshEntitlements = apiClient.get(
-				"/api/plugin/entitlements",
-				PluginEntitlements.class
-			);
-			boolean entitlementsChanged = entitlementsChanged(entitlements, freshEntitlements);
-			entitlements = freshEntitlements;
-			if (entitlementsChanged)
+			if (entitlements == null)
 			{
-				entitlementsListener.accept(freshEntitlements);
+				PluginEntitlements freshEntitlements = apiClient.get(
+					"/api/plugin/entitlements",
+					PluginEntitlements.class
+				);
+				applyEntitlementsUpdate(freshEntitlements);
+				nextEntitlementsPollAtMs =
+					System.currentTimeMillis() + ENTITLEMENTS_POLL_SECONDS * 1000L;
 			}
 
 			MarketQueryResponse response = apiClient.post(
@@ -297,7 +401,7 @@ public class OpportunitiesClient
 		cancelAlignedRefresh();
 		long delayMs = Math.max(0, targetAtMs - System.currentTimeMillis());
 		alignedRefreshTask = executorService.schedule(
-			() -> executorService.execute(this::tick),
+			() -> executorService.execute(this::tickMarketIfDue),
 			delayMs,
 			TimeUnit.MILLISECONDS
 		);
@@ -321,11 +425,19 @@ public class OpportunitiesClient
 		return !Objects.equals(before.getTier(), after.getTier())
 			|| before.isPaid() != after.isPaid()
 			|| before.isUltra() != after.isUltra()
+			|| before.isElite() != after.isElite()
 			|| before.getMaxOpportunities() != after.getMaxOpportunities()
 			|| before.getRefreshIntervalMs() != after.getRefreshIntervalMs()
 			|| before.getPublishLeadMs() != after.getPublishLeadMs()
 			|| before.getSlotOptimizerSlots() != after.getSlotOptimizerSlots()
 			|| before.isQuickPresets() != after.isQuickPresets()
-			|| before.isAdvancedFilters() != after.isAdvancedFilters();
+			|| before.isAdvancedFilters() != after.isAdvancedFilters()
+			|| before.isCopilotApi() != after.isCopilotApi()
+			|| before.isCloudSync() != after.isCloudSync()
+			|| before.isPortfolio() != after.isPortfolio()
+			|| before.isRecipeFlips() != after.isRecipeFlips()
+			|| before.getItemChartDays() != after.getItemChartDays()
+			|| before.getWatchlistMaxItems() != after.getWatchlistMaxItems()
+			|| before.isVolumeEmphasis() != after.isVolumeEmphasis();
 	}
 }

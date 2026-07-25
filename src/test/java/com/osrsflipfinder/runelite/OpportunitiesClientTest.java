@@ -28,6 +28,25 @@ public class OpportunitiesClientTest
 	}
 
 	@Test
+	public void entitlementsChangedDetectsEliteUpgrade()
+	{
+		PluginEntitlements before = new PluginEntitlements();
+		before.setTier("ultra");
+		before.setPaid(true);
+		before.setUltra(true);
+		before.setPublishLeadMs(5_000);
+
+		PluginEntitlements after = new PluginEntitlements();
+		after.setTier("elite");
+		after.setPaid(true);
+		after.setUltra(true);
+		after.setElite(true);
+		after.setPublishLeadMs(500);
+
+		assertTrue(OpportunitiesClient.entitlementsChanged(before, after));
+	}
+
+	@Test
 	public void entitlementsChangedIgnoresIdenticalSnapshot()
 	{
 		PluginEntitlements before = new PluginEntitlements();

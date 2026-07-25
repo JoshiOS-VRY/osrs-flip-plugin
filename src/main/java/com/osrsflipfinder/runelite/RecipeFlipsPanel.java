@@ -61,6 +61,18 @@ class RecipeFlipsPanel extends SidebarContentPanel
 		);
 		PluginUi.fullWidth(link);
 		add(link);
+		opportunitiesClient.addEntitlementsListener(entitlements ->
+			SwingUtilities.invokeLater(this::onEntitlementsUpdated)
+		);
+	}
+
+	private void onEntitlementsUpdated()
+	{
+		if (config.apiKey() == null || config.apiKey().isBlank())
+		{
+			return;
+		}
+		load();
 	}
 
 	void updateRefreshTimer()

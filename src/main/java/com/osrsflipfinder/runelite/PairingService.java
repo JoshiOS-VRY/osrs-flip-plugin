@@ -116,7 +116,12 @@ public class PairingService
 			JsonObject parsed = new JsonParser().parse(raw).getAsJsonObject();
 			if (parsed.has("error"))
 			{
-				return parsed.get("error").getAsString();
+				String error = parsed.get("error").getAsString();
+				if ("upgrade_required".equals(error))
+				{
+					return "FlipX could not verify your subscription. Confirm Pro+ on the web app, generate a new code, and connect again.";
+				}
+				return error;
 			}
 		}
 		catch (RuntimeException ignored)

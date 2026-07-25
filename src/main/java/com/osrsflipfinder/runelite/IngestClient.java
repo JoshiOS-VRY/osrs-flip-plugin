@@ -342,7 +342,14 @@ public class IngestClient
 
 			if (response.code() == 403)
 			{
-				String message = parseErrorMessage(raw, "Pro subscription required for plugin sync");
+				String code = parseErrorCode(raw);
+				if ("linked_account_limit".equals(code))
+				{
+					String message = parseErrorMessage(raw,
+						"Free plan supports one OSRS account. Upgrade at flipx.app/pricing or log into your linked account.");
+					throw new IngestPermanentException(message);
+				}
+				String message = humanizeUpgradeMessage(parseErrorMessage(raw, "Pro subscription required for plugin sync"));
 				throw new IngestAuthException(PluginState.UPGRADE_REQUIRED, message, apiKeyUsed);
 			}
 
@@ -387,6 +394,23 @@ public class IngestClient
 		}
 	}
 
+	private static String parseErrorCode(String raw)
+	{
+		try
+		{
+			JsonObject parsed = new JsonParser().parse(raw).getAsJsonObject();
+			if (parsed.has("code"))
+			{
+				return parsed.get("code").getAsString();
+			}
+		}
+		catch (RuntimeException ignored)
+		{
+			// fall through
+		}
+		return "";
+	}
+
 	private static String parseErrorMessage(String raw, String fallback)
 	{
 		try
@@ -402,6 +426,15 @@ public class IngestClient
 			// fall through
 		}
 		return fallback;
+	}
+
+	private static String humanizeUpgradeMessage(String message)
+	{
+		if (message == null || message.isBlank() || "upgrade_required".equals(message))
+		{
+			return "FlipX could not verify your subscription. Refresh billing on the web app, then try Connect again.";
+		}
+		return message;
 	}
 
 	@Value
