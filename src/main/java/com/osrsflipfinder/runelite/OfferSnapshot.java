@@ -32,7 +32,7 @@ final class OfferSnapshot
 		return new OfferSnapshot(
 			offer.getState(),
 			offer.getItemId(),
-			offer.getPrice(),
+			GeOfferPricing.unitPrice(offer),
 			offer.getTotalQuantity(),
 			offer.getQuantitySold()
 		);
@@ -42,9 +42,9 @@ final class OfferSnapshot
 	{
 		return state == offer.getState()
 			&& itemId == offer.getItemId()
-			&& price == offer.getPrice()
 			&& quantity == offer.getTotalQuantity()
-			&& quantityFilled == offer.getQuantitySold();
+			&& quantityFilled == offer.getQuantitySold()
+			&& price == GeOfferPricing.unitPrice(offer);
 	}
 
 	@Override

@@ -77,7 +77,7 @@ Each event includes:
 | `accountHash` | Jagex account hash from RuneLite (not your RSN) |
 | `itemId` / `itemName` | Item being traded |
 | `side` | `buy` or `sell` |
-| `price` / `quantity` / `quantityFilled` | Offer details |
+| `price` / `quantity` / `quantityFilled` | **`price` is the average fill per item** (`getSpent() / getQuantitySold()` when filled), not the limit you type in the GE form. Open offers with zero fill use the limit price. |
 | `state` | `buying`, `selling`, `cancelled_buy`, `cancelled_sell`, `bought`, `sold` |
 | `slot` | GE slot index (0–7) |
 | `occurredAt` | UTC timestamp |

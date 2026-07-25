@@ -50,7 +50,8 @@ public class EventMapperTest
 			995,
 			100,
 			1000,
-			1000
+			1000,
+			100_000
 		);
 
 		IngestGeEvent event = EventMapper.mapOffer(
@@ -64,6 +65,32 @@ public class EventMapperTest
 
 		assertEquals("sold", event.getState());
 		assertEquals("sell", event.getSide());
+		assertEquals(100, event.getPrice());
+	}
+
+	@Test
+	public void mapsInstantSellAtLimitOneToActualFillPrice()
+	{
+		GrandExchangeOffer offer = mockOffer(
+			GrandExchangeOfferState.SOLD,
+			20718,
+			1,
+			1,
+			1,
+			6_709
+		);
+
+		IngestGeEvent event = EventMapper.mapOffer(
+			offer,
+			3,
+			12345L,
+			"Test",
+			"Burnt page",
+			Instant.parse("2026-07-25T20:00:00Z")
+		);
+
+		assertEquals(6_709, event.getPrice());
+		assertEquals("sold", event.getState());
 	}
 
 	@Test
@@ -179,12 +206,25 @@ public class EventMapperTest
 		int quantitySold
 	)
 	{
+		return mockOffer(state, itemId, price, totalQuantity, quantitySold, price * quantitySold);
+	}
+
+	private static GrandExchangeOffer mockOffer(
+		GrandExchangeOfferState state,
+		int itemId,
+		int limitPrice,
+		int totalQuantity,
+		int quantitySold,
+		int spent
+	)
+	{
 		GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
 		when(offer.getState()).thenReturn(state);
 		when(offer.getItemId()).thenReturn(itemId);
-		when(offer.getPrice()).thenReturn(price);
+		when(offer.getPrice()).thenReturn(limitPrice);
 		when(offer.getTotalQuantity()).thenReturn(totalQuantity);
 		when(offer.getQuantitySold()).thenReturn(quantitySold);
+		when(offer.getSpent()).thenReturn(spent);
 		return offer;
 	}
 }

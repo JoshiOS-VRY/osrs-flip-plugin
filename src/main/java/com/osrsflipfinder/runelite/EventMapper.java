@@ -41,12 +41,13 @@ public final class EventMapper
 		String side = mapSide(offerState);
 		String occurredAtIso = occurredAt.toString();
 		String accountHashValue = String.valueOf(accountHash);
+		int unitPrice = GeOfferPricing.unitPrice(offer);
 
 		String idempotencyKey = IdempotencyKeyBuilder.build(
 			accountHashValue,
 			offer.getItemId(),
 			side,
-			offer.getPrice(),
+			unitPrice,
 			offer.getTotalQuantity(),
 			offer.getQuantitySold(),
 			state,
@@ -61,7 +62,7 @@ public final class EventMapper
 			.itemId(offer.getItemId())
 			.itemName(itemName)
 			.side(side)
-			.price(offer.getPrice())
+			.price(unitPrice)
 			.quantity(offer.getTotalQuantity())
 			.quantityFilled(offer.getQuantitySold())
 			.state(state)
@@ -140,13 +141,14 @@ public final class EventMapper
 			previous.getQuantity(),
 			previous.getQuantityFilled()
 		);
+		int unitPrice = previous.getPrice();
 		String occurredAtIso = occurredAt.toString();
 		String accountHashValue = String.valueOf(accountHash);
 		String idempotencyKey = IdempotencyKeyBuilder.build(
 			accountHashValue,
 			previous.getItemId(),
 			side,
-			previous.getPrice(),
+			unitPrice,
 			terminalQty,
 			terminalQty,
 			state,
@@ -161,7 +163,7 @@ public final class EventMapper
 			.itemId(previous.getItemId())
 			.itemName(itemName)
 			.side(side)
-			.price(previous.getPrice())
+			.price(unitPrice)
 			.quantity(terminalQty)
 			.quantityFilled(terminalQty)
 			.state(state)

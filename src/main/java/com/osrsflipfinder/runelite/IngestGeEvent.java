@@ -13,6 +13,7 @@ public class IngestGeEvent
 	int itemId;
 	String itemName;
 	String side;
+	/** Per-item executed trade price (average fill), not the limit entered on the GE form. */
 	int price;
 	int quantity;
 	int quantityFilled;
