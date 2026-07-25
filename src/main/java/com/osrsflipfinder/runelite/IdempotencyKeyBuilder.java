@@ -29,4 +29,25 @@ public final class IdempotencyKeyBuilder
 			+ occurredAt + ':'
 			+ slotValue;
 	}
+
+	/** Stable key for RuneLite GE tradeHistory backfill (no timestamp in key). */
+	public static String importHistory(
+		String accountHash,
+		int itemId,
+		String side,
+		int price,
+		int quantity,
+		String state,
+		long epochSecond
+	)
+	{
+		return "import:runelite-ge:"
+			+ accountHash + ':'
+			+ itemId + ':'
+			+ side + ':'
+			+ price + ':'
+			+ quantity + ':'
+			+ state + ':'
+			+ epochSecond;
+	}
 }

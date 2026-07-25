@@ -279,9 +279,10 @@ public class IngestClient
 		}
 		catch (IngestAuthException e)
 		{
+			requeueFront(batch);
 			consecutiveFailures = 0;
 			retryAfterMs = 0;
-			clearApiKey();
+			PairingCredentials.clearIfAuthFailedForKey(configManager, config, e.getApiKeyUsed());
 			stateListener.accept(e.getState());
 			errorListener.accept(e.getMessage());
 		}
@@ -310,6 +311,7 @@ public class IngestClient
 
 	private IngestResult postBatch(List<IngestGeEvent> batch) throws IOException
 	{
+		String apiKeyUsed = config.apiKey();
 		JsonObject root = new JsonObject();
 		JsonArray events = new JsonArray();
 		for (IngestGeEvent event : batch)
@@ -320,7 +322,7 @@ public class IngestClient
 
 		Request request = new Request.Builder()
 			.url(FlipXConstants.baseUrl() + "/api/ingest/ge-events")
-			.addHeader("Authorization", "Bearer " + config.apiKey())
+			.addHeader("Authorization", "Bearer " + apiKeyUsed)
 			.post(RequestBody.create(JSON, gson.toJson(root)))
 			.build();
 
@@ -331,24 +333,28 @@ public class IngestClient
 
 			if (response.code() == 401)
 			{
-				throw new IngestAuthException(PluginState.REPAIR_REQUIRED, "Invalid API key — re-pair required");
+				throw new IngestAuthException(
+					PluginState.REPAIR_REQUIRED,
+					"Invalid API key - re-pair required",
+					apiKeyUsed
+				);
 			}
 
 			if (response.code() == 403)
 			{
 				String message = parseErrorMessage(raw, "Pro subscription required for plugin sync");
-				throw new IngestAuthException(PluginState.UPGRADE_REQUIRED, message);
+				throw new IngestAuthException(PluginState.UPGRADE_REQUIRED, message, apiKeyUsed);
 			}
 
 			if (response.code() == 400)
 			{
-				String message = parseErrorMessage(raw, "Invalid event data — sync paused");
+				String message = parseErrorMessage(raw, "Invalid event data - sync paused");
 				throw new IngestPermanentException(message);
 			}
 
 			if (response.code() == 429)
 			{
-				String message = parseErrorMessage(raw, "Rate limited — backing off");
+				String message = parseErrorMessage(raw, "Rate limited - backing off");
 				throw new IOException(message);
 			}
 
@@ -379,12 +385,6 @@ public class IngestClient
 		{
 			queue.add(batch.get(i));
 		}
-	}
-
-	private void clearApiKey()
-	{
-		configManager.unsetConfiguration(FlipFinderConfig.GROUP, "apiKey");
-		configManager.unsetConfiguration(FlipFinderConfig.GROUP, "pairedAt");
 	}
 
 	private static String parseErrorMessage(String raw, String fallback)
@@ -424,16 +424,23 @@ public class IngestClient
 	private static final class IngestAuthException extends IOException
 	{
 		private final PluginState state;
+		private final String apiKeyUsed;
 
-		private IngestAuthException(PluginState state, String message)
+		private IngestAuthException(PluginState state, String message, String apiKeyUsed)
 		{
 			super(message);
 			this.state = state;
+			this.apiKeyUsed = apiKeyUsed;
 		}
 
 		private PluginState getState()
 		{
 			return state;
+		}
+
+		private String getApiKeyUsed()
+		{
+			return apiKeyUsed;
 		}
 	}
 

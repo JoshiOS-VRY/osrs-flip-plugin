@@ -23,12 +23,14 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class PortfolioClient
 {
+	static final long REFRESH_INTERVAL_MS = 30_000L;
 	private static final int POLL_TICK_SECONDS = 10;
 
 	private final PluginApiClient apiClient;
 	private final FlipFinderConfig config;
 	private final LocalCacheStore cacheStore;
 	private final ScheduledExecutorService executorService;
+	private final OpportunitiesClient opportunitiesClient;
 
 	@Getter
 	private volatile SlotsLiveResponse latestSlots;
@@ -51,11 +53,28 @@ public class PortfolioClient
 
 	private volatile boolean active = false;
 	private volatile long nextRefreshAtMs = 0;
+	@Getter
+	private volatile long refreshIntervalMs = REFRESH_INTERVAL_MS;
 	private final AtomicBoolean fetchInProgress = new AtomicBoolean(false);
 
 	private volatile Consumer<SlotsLiveResponse> slotsListener = slots -> {};
 	private volatile Consumer<LiveSessionStats> sessionListener = session -> {};
 	private volatile Consumer<List<ItemPerformanceRow>> sessionItemsListener = items -> {};
+
+	private volatile Consumer<PluginState> authFailureListener = state -> {};
+
+	void setAuthFailureListener(Consumer<PluginState> listener)
+	{
+		this.authFailureListener = listener != null ? listener : state -> {};
+	}
+
+	private void notifyAuthFailure(IOException ex)
+	{
+		if (ex instanceof PluginApiException)
+		{
+			authFailureListener.accept(((PluginApiException) ex).getState());
+		}
+	}
 
 	private ScheduledFuture<?> pollTask;
 
@@ -64,13 +83,15 @@ public class PortfolioClient
 		PluginApiClient apiClient,
 		FlipFinderConfig config,
 		LocalCacheStore cacheStore,
-		ScheduledExecutorService executorService
+		ScheduledExecutorService executorService,
+		OpportunitiesClient opportunitiesClient
 	)
 	{
 		this.apiClient = apiClient;
 		this.config = config;
 		this.cacheStore = cacheStore;
 		this.executorService = executorService;
+		this.opportunitiesClient = opportunitiesClient;
 	}
 
 	void setSlotsListener(Consumer<SlotsLiveResponse> listener)
@@ -111,6 +132,21 @@ public class PortfolioClient
 		}
 	}
 
+	long getNextRefreshAtMs()
+	{
+		return nextRefreshAtMs;
+	}
+
+	boolean isActive()
+	{
+		return active;
+	}
+
+	boolean isFetchInProgress()
+	{
+		return fetchInProgress.get();
+	}
+
 	void setActive(boolean active)
 	{
 		boolean wasActive = this.active;
@@ -124,7 +160,7 @@ public class PortfolioClient
 
 	private void tick()
 	{
-		if (!active || !apiClient.isConfigured() || !config.enableUpload())
+		if (!active || !apiClient.isConfigured())
 		{
 			return;
 		}
@@ -148,7 +184,8 @@ public class PortfolioClient
 
 	private void refreshNow()
 	{
-		long intervalMs = 30_000L;
+		long intervalMs = portfolioFallbackIntervalMs();
+		refreshIntervalMs = intervalMs;
 		try
 		{
 			SlotsLiveResponse slots = apiClient.get("/api/plugin/slots/live?account=all", SlotsLiveResponse.class);
@@ -169,6 +206,7 @@ public class PortfolioClient
 				slotsListener.accept(latestSlots);
 			}
 			log.debug("Slots live fetch failed", ex);
+			notifyAuthFailure(ex);
 		}
 
 		try
@@ -200,9 +238,55 @@ public class PortfolioClient
 				sessionItemsListener.accept(latestSessionItems);
 			}
 			log.debug("Session fetch failed", ex);
+			notifyAuthFailure(ex);
 		}
 
 		nextRefreshAtMs = System.currentTimeMillis() + intervalMs;
+	}
+
+	private long portfolioFallbackIntervalMs()
+	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements != null && entitlements.getRefreshIntervalMs() > 0)
+		{
+			return entitlements.getRefreshIntervalMs();
+		}
+		return REFRESH_INTERVAL_MS;
+	}
+
+	/** Immediate slots fetch when opening flip manager. */
+	void refreshSlotsNow()
+	{
+		if (!apiClient.isConfigured())
+		{
+			return;
+		}
+		executorService.execute(() ->
+		{
+			try
+			{
+				SlotsLiveResponse slots = apiClient.get("/api/plugin/slots/live?account=all", SlotsLiveResponse.class);
+				latestSlots = slots;
+				slotsOffline = false;
+				slotsCachedAt = null;
+				cacheStore.write("slots-live", slots, config);
+				slotsListener.accept(slots);
+			}
+			catch (IOException ex)
+			{
+				slotsOffline = true;
+				LocalCacheStore.CachedEntry<SlotsLiveResponse> cached =
+					cacheStore.read("slots-live", SlotsLiveResponse.class, config);
+				if (cached != null)
+				{
+					latestSlots = cached.getPayload();
+					slotsCachedAt = cached.getCachedAt();
+					slotsListener.accept(latestSlots);
+				}
+				log.debug("Slots live fetch failed", ex);
+				notifyAuthFailure(ex);
+			}
+		});
 	}
 
 	private void refreshSessionItems(LiveSessionStats session)

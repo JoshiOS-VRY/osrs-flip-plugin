@@ -151,14 +151,8 @@ class GeSetupPanel extends SidebarContentPanel
 		}
 
 		FlipOpportunity opp = detail.getOpportunity();
-		JLabel title = new JLabel(opp.getName());
-		title.setForeground(Color.WHITE);
-		body.add(title);
-		body.add(PluginUi.caption("Score " + opp.getOpportunityScore() + "/100"));
-		body.add(PluginUi.caption("Buy " + MarketFormat.gp(opp.getEstimatedBuyPrice())
-			+ " · Sell " + MarketFormat.gp(opp.getEstimatedSellPrice())));
-		body.add(PluginUi.caption("Net " + MarketFormat.signedGp(opp.getNetProfitPerItem())
-			+ " · ROI " + MarketFormat.percent(opp.getNetRoiPercent())));
+		body.add(GeCopilotUi.buildBody(itemManager, itemId, opp));
+		geInterfaceListener.updateSearchHint(opp.getName());
 		statusLabel.setText(" ");
 		revalidate();
 		repaint();

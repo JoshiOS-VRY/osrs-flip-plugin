@@ -16,15 +16,15 @@ import net.runelite.client.ui.FontManager;
 /** A styled, clickable opportunity row in the market list. */
 class OpportunityRow extends JPanel
 {
-	private static final int ROW_HEIGHT = 56;
+	private static final int ROW_HEIGHT = 52;
 
 	OpportunityRow(FlipOpportunity opp, ItemManager itemManager, Runnable onClick)
 	{
-		setLayout(new BorderLayout(6, 0));
+		setLayout(new BorderLayout(PluginUi.SPACING_SM, 0));
 		setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createMatteBorder(0, 3, 0, 0, scoreAccent(opp.getOpportunityScore())),
-			BorderFactory.createEmptyBorder(6, 6, 6, 6)
+			BorderFactory.createEmptyBorder(PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM)
 		));
 		setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
 		setAlignmentX(LEFT_ALIGNMENT);
@@ -44,17 +44,15 @@ class OpportunityRow extends JPanel
 		name.setFont(FontManager.getRunescapeSmallFont());
 		name.setToolTipText(opp.getName());
 
-		JLabel stats = new JLabel(String.format(
-			"<html><span style='color:%s;'>%s</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#cccccc;'>%s</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#D9B45B;'>%d</span></html>",
-			toHex(opp.getNetProfitPerItem() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE),
-			MarketFormat.signedGp(opp.getNetProfitPerItem()),
-			MarketFormat.percent(opp.getNetRoiPercent()),
-			opp.getOpportunityScore()
-		));
+		JLabel stats = new JLabel("<html>"
+			+ PluginUi.htmlSpan(
+				opp.getNetProfitPerItem() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE,
+				MarketFormat.signedGp(opp.getNetProfitPerItem()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, MarketFormat.percent(opp.getNetRoiPercent()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(PluginUi.GOLD, String.valueOf(opp.getOpportunityScore()))
+			+ "</html>");
 		stats.setFont(FontManager.getRunescapeSmallFont());
 
 		text.add(name);
@@ -103,8 +101,4 @@ class OpportunityRow extends JPanel
 		return ColorScheme.MEDIUM_GRAY_COLOR;
 	}
 
-	private static String toHex(Color color)
-	{
-		return String.format("#%06X", color.getRGB() & 0xFFFFFF);
-	}
 }

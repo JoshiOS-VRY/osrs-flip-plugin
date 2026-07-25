@@ -3,13 +3,19 @@ package com.osrsflipfinder.runelite;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JCheckBox;
@@ -18,14 +24,21 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
+import net.runelite.api.Client;
+import net.runelite.client.callback.ClientThread;
 
 /** GE slot optimizer with filters, sort, and actionable buy/sell/qty metrics. */
 class SlotOptimizerPanel extends SidebarContentPanel
 {
+	private static final int ROW_HEIGHT = 52;
+	private static final int CAPITAL_DEBOUNCE_MS = 350;
+
 	private static final String[] SORT_IDS = {
 		"gpPerSlotHour", "score", "netProfit", "roi", "totalProfit", "gpPerHour",
 		"buy", "sell", "qty", "capital", "vol5m", "vol1h", "turnover"
@@ -40,18 +53,22 @@ class SlotOptimizerPanel extends SidebarContentPanel
 	private final BookmarksClient bookmarksClient;
 	private final CoinBalanceService coinBalanceService;
 	private final ItemManager itemManager;
+	private final Client client;
+	private final ClientThread clientThread;
 	private final ScheduledExecutorService executorService;
 	private final FlipFinderConfig config;
 	private final ConfigManager configManager;
 	private final Consumer<String> errorListener;
+	private final Consumer<SlotRecommendation> onItemSelected;
 	private final SlotOptimizerFiltersPanel filtersPanel;
 	private final FilterBookmarksBar slotBookmarksBar;
 
-	private final JLabel statusLabel = PluginUi.caption("Loading slots…");
+	private final JLabel statusLabel = PluginUi.caption("Loading slots...");
+	private final JLabel marketRefreshTimerLabel = PluginUi.caption(" ");
 	private final JLabel filterNoticeLabel = PluginUi.hint(" ");
 	private final JTextField maxCapitalField = PluginUi.textField("");
 	private final JComboBox<String> sortCombo = new JComboBox<>(new DefaultComboBoxModel<>(SORT_LABELS));
-	private final JCheckBox sortDescCheck = new JCheckBox("High to low", true);
+	private final JCheckBox sortDescCheck = PluginUi.checkBox("High to low", true);
 	private final JPanel summaryPanel = new JPanel();
 	private final JPanel listContainer = PluginUi.listContainer();
 
@@ -60,6 +77,8 @@ class SlotOptimizerPanel extends SidebarContentPanel
 	private Long lastMaxCapital;
 	private String lastEntitlementsKey;
 	private String lastQueryKey;
+	private GeSlotOccupancy.Snapshot lastOccupancy;
+	private volatile ScheduledFuture<?> debouncedCapitalLoad;
 
 	SlotOptimizerPanel(
 		PluginApiClient apiClient,
@@ -67,11 +86,14 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		BookmarksClient bookmarksClient,
 		CoinBalanceService coinBalanceService,
 		ItemManager itemManager,
+		Client client,
+		ClientThread clientThread,
 		ScheduledExecutorService executorService,
 		FlipFinderConfig config,
 		ConfigManager configManager,
 		Runnable onBack,
-		Consumer<String> errorListener
+		Consumer<String> errorListener,
+		Consumer<SlotRecommendation> onItemSelected
 	)
 	{
 		this.apiClient = apiClient;
@@ -79,10 +101,13 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		this.bookmarksClient = bookmarksClient;
 		this.coinBalanceService = coinBalanceService;
 		this.itemManager = itemManager;
+		this.client = client;
+		this.clientThread = clientThread;
 		this.executorService = executorService;
 		this.config = config;
 		this.configManager = configManager;
 		this.errorListener = errorListener;
+		this.onItemSelected = onItemSelected;
 		this.filtersPanel = new SlotOptimizerFiltersPanel(config, configManager, this::load);
 
 		this.slotBookmarksBar = new FilterBookmarksBar(
@@ -99,73 +124,91 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		setAlignmentX(LEFT_ALIGNMENT);
 
 		add(PluginUi.subViewHeader("Slot optimizer", onBack, statusLabel));
+		marketRefreshTimerLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		marketRefreshTimerLabel.setAlignmentX(LEFT_ALIGNMENT);
+		add(marketRefreshTimerLabel);
 
 		if (coinBalanceService.hasCoins())
 		{
 			maxCapitalField.setText(String.valueOf(coinBalanceService.getCoins()));
 		}
-		add(PluginUi.labeledField("Max capital", maxCapitalField));
-		add(PluginUi.gap(8));
-
-		add(slotBookmarksBar);
-		add(PluginUi.gap(8));
 
 		sortCombo.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		sortCombo.setForeground(Color.WHITE);
-		sortDescCheck.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		sortDescCheck.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		sortCombo.setToolTipText("Rank candidates before filling GE slots");
 		sortCombo.addActionListener(e -> onSortChanged());
 		sortDescCheck.addActionListener(e -> onSortChanged());
-		add(PluginUi.labeledField("Rank by", sortCombo));
-		add(PluginUi.gap(4));
-		add(sortDescCheck);
-		add(PluginUi.gap(8));
+		PluginUi.styleCombo(sortCombo);
+
+		JPanel setup = PluginUi.verticalStack(
+			PluginUi.labeledField("Max capital", maxCapitalField),
+			slotBookmarksBar,
+			PluginUi.labeledField("Rank by", sortCombo),
+			PluginUi.indented(sortDescCheck)
+		);
+		add(PluginUi.formCard(setup));
+		add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		add(filtersPanel.wrapper());
-		add(PluginUi.gap(4));
 		filterNoticeLabel.setVisible(false);
 		add(filterNoticeLabel);
-		add(PluginUi.gap(6));
+		add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		summaryPanel.setLayout(new BoxLayout(summaryPanel, BoxLayout.Y_AXIS));
 		summaryPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		summaryPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		SidebarContentPanel.lockWidth(summaryPanel);
 		add(summaryPanel);
-		add(PluginUi.gap(6));
+		add(PluginUi.gap(PluginUi.SPACING_SM));
 
 		PluginUi.fullWidthGrow(listContainer);
 		add(listContainer);
 
-		maxCapitalField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener()
+		maxCapitalField.getDocument().addDocumentListener(new DocumentListener()
 		{
 			@Override
-			public void insertUpdate(javax.swing.event.DocumentEvent e)
+			public void insertUpdate(DocumentEvent e)
 			{
-				load();
+				scheduleCapitalLoad();
 			}
 
 			@Override
-			public void removeUpdate(javax.swing.event.DocumentEvent e)
+			public void removeUpdate(DocumentEvent e)
 			{
-				load();
+				scheduleCapitalLoad();
 			}
 
 			@Override
-			public void changedUpdate(javax.swing.event.DocumentEvent e)
+			public void changedUpdate(DocumentEvent e)
 			{
-				load();
+				scheduleCapitalLoad();
 			}
 		});
 
 		restoreSortControls();
 	}
 
+	private void scheduleCapitalLoad()
+	{
+		if (debouncedCapitalLoad != null)
+		{
+			debouncedCapitalLoad.cancel(false);
+		}
+		debouncedCapitalLoad = executorService.schedule(
+			() -> SwingUtilities.invokeLater(this::load),
+			CAPITAL_DEBOUNCE_MS,
+			TimeUnit.MILLISECONDS
+		);
+	}
+
 	void refreshEntitlements()
 	{
 		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
-		filtersPanel.setAdvancedEnabled(entitlements != null && entitlements.isAdvancedFilters());
+		if (entitlements != null)
+		{
+			filtersPanel.setAdvancedEnabled(entitlements.isAdvancedFilters());
+		}
 		updateFilterNotice();
 		slotBookmarksBar.refresh();
 	}
@@ -256,24 +299,58 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		Long maxCapital = resolveMaxCapital();
 		long metaUpdatedMs = readLatestMetaUpdatedMs();
 		String entitlementsKey = readEntitlementsKey();
-		String queryKey = buildQueryKey(maxCapital);
+
+		statusLabel.setText("Loading slots...");
+		summaryPanel.removeAll();
+		listContainer.removeAll();
+		listContainer.revalidate();
+		listContainer.repaint();
+
+		clientThread.invokeLater(() ->
+		{
+			GeSlotOccupancy.Snapshot occupancy = GeSlotOccupancy.read(client);
+			SwingUtilities.invokeLater(() -> loadWithOccupancy(
+				occupancy,
+				maxCapital,
+				metaUpdatedMs,
+				entitlementsKey
+			));
+		});
+	}
+
+	private void loadWithOccupancy(
+		GeSlotOccupancy.Snapshot occupancy,
+		Long maxCapital,
+		long metaUpdatedMs,
+		String entitlementsKey
+	)
+	{
+		String queryKey = buildQueryKey(maxCapital, occupancy);
 		if (lastResponse != null
 			&& lastMetaUpdatedMs == metaUpdatedMs
 			&& Objects.equals(lastMaxCapital, maxCapital)
 			&& Objects.equals(lastEntitlementsKey, entitlementsKey)
 			&& Objects.equals(lastQueryKey, queryKey))
 		{
+			lastOccupancy = occupancy;
 			render(lastResponse);
 			return;
 		}
 
-		statusLabel.setText("Loading slots…");
-		summaryPanel.removeAll();
-		listContainer.removeAll();
-		listContainer.revalidate();
-		listContainer.repaint();
+		lastOccupancy = occupancy;
 
-		SlotsOptimizeRequest request = buildRequest(maxCapital);
+		if (occupancy.getEmptySlots() == 0)
+		{
+			lastResponse = null;
+			lastMetaUpdatedMs = metaUpdatedMs;
+			lastMaxCapital = maxCapital;
+			lastEntitlementsKey = entitlementsKey;
+			lastQueryKey = queryKey;
+			renderAllSlotsOccupied();
+			return;
+		}
+
+		SlotsOptimizeRequest request = buildRequest(maxCapital, occupancy);
 
 		executorService.execute(() ->
 		{
@@ -302,28 +379,35 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		});
 	}
 
-	private SlotsOptimizeRequest buildRequest(Long maxCapital)
+	private SlotsOptimizeRequest buildRequest(Long maxCapital, GeSlotOccupancy.Snapshot occupancy)
 	{
 		SlotsOptimizeRequest request = new SlotsOptimizeRequest();
 		request.setMaxCapital(maxCapital);
 		request.setFilters(filtersPanel.buildFilters());
+		request.setAvailableSlots(occupancy.getEmptySlots());
+		if (!occupancy.getOccupiedItemIds().isEmpty())
+		{
+			request.setExcludeItemIds(occupancy.getOccupiedItemIds());
+		}
 		int sortIndex = Math.max(0, sortCombo.getSelectedIndex());
 		request.setRankSort(SORT_IDS[sortIndex], sortDescCheck.isSelected());
 		return request;
 	}
 
-	private String buildQueryKey(Long maxCapital)
+	private String buildQueryKey(Long maxCapital, GeSlotOccupancy.Snapshot occupancy)
 	{
 		int sortIndex = Math.max(0, sortCombo.getSelectedIndex());
 		return filtersPanel.filtersFingerprint()
 			+ ":" + SORT_IDS[sortIndex]
 			+ ":" + sortDescCheck.isSelected()
-			+ ":" + maxCapital;
+			+ ":" + maxCapital
+			+ ":ge:" + occupancy.getOccupiedSlots()
+			+ ":" + occupancy.getOccupiedItemIds();
 	}
 
 	private void restoreSortControls()
 	{
-		String sortId = config.slotOptSortId();
+		String sortId = FlipFinderConfigIO.getString(configManager, "slotOptSortId", "gpPerSlotHour");
 		int sortIndex = 0;
 		for (int i = 0; i < SORT_IDS.length; i++)
 		{
@@ -334,7 +418,9 @@ class SlotOptimizerPanel extends SidebarContentPanel
 			}
 		}
 		sortCombo.setSelectedIndex(sortIndex);
-		sortDescCheck.setSelected(config.slotOptSortDesc());
+		sortDescCheck.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "slotOptSortDesc", true)
+		);
 	}
 
 	private void onSortChanged()
@@ -394,7 +480,20 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		List<SlotRecommendation> slots = response != null ? response.getSlots() : null;
 		if (slots == null || slots.isEmpty())
 		{
-			statusLabel.setText("No slots match your filters. Try widening filters or raising capital.");
+			if (lastOccupancy != null && lastOccupancy.getEmptySlots() > 0)
+			{
+				statusLabel.setText("No picks match filters");
+				summaryPanel.add(PluginUi.emptyState(
+					"No new flips fit your filters for "
+						+ lastOccupancy.getEmptySlots()
+						+ " empty slot(s). Widen filters or raise capital."));
+			}
+			else
+			{
+				statusLabel.setText("No matches");
+				summaryPanel.add(PluginUi.emptyState(
+					"No slots match your filters. Widen filters or raise capital."));
+			}
 		}
 		else
 		{
@@ -406,15 +505,23 @@ class SlotOptimizerPanel extends SidebarContentPanel
 				totalGpPerSlotHr += Math.round(slot.getProfitPerSlotHour());
 			}
 
-			statusLabel.setText(slots.size() + " slots · fill GE in order shown");
+			int empty = lastOccupancy != null ? lastOccupancy.getEmptySlots() : slots.size();
+			statusLabel.setText(slots.size() + " picks | " + empty + " empty GE slot" + (empty == 1 ? "" : "s"));
 			summaryPanel.add(buildTotalsStrip(totalCapital, totalGpPerSlotHr));
-			summaryPanel.add(PluginUi.gap(6));
-			summaryPanel.add(PluginUi.hint("Buy at est. buy · sell at est. sell · qty = recommended stack"));
+			summaryPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
+			if (lastOccupancy != null && !lastOccupancy.getOccupiedItemIds().isEmpty())
+			{
+				summaryPanel.add(PluginUi.hint(
+					lastOccupancy.getOccupiedSlots()
+						+ " slot(s) in use. Items already in GE are hidden here."));
+				summaryPanel.add(PluginUi.gap(PluginUi.SPACING_XS));
+			}
+			summaryPanel.add(PluginUi.hint("Tap a row for item detail."));
 
 			for (SlotRecommendation slot : slots)
 			{
 				listContainer.add(buildRow(slot));
-				listContainer.add(PluginUi.gap(4));
+				listContainer.add(PluginUi.gap(PluginUi.SPACING_XS));
 			}
 		}
 		summaryPanel.revalidate();
@@ -423,99 +530,136 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		listContainer.repaint();
 	}
 
+	private void renderAllSlotsOccupied()
+	{
+		summaryPanel.removeAll();
+		listContainer.removeAll();
+		statusLabel.setText("All 8 GE slots in use");
+		summaryPanel.add(PluginUi.emptyState(
+			"No empty slots to fill. Collect completed offers or cancel one, then reopen this view. "
+				+ "Active offers and reprice guidance -> Flip manager."));
+		summaryPanel.revalidate();
+		summaryPanel.repaint();
+		listContainer.revalidate();
+		listContainer.repaint();
+	}
+
 	private JPanel buildTotalsStrip(long totalCapital, long totalGpPerSlotHr)
 	{
-		JLabel capitalLabel = new JLabel(MarketFormat.gp(totalCapital));
+		JLabel capitalLabel = new JLabel();
 		capitalLabel.setForeground(Color.WHITE);
-		JLabel gpHrLabel = new JLabel(MarketFormat.gp(totalGpPerSlotHr));
-		gpHrLabel.setForeground(PluginUi.POSITIVE);
-		JPanel strip = PluginUi.summaryStrip(
-			PluginUi.statCell(capitalLabel, "Capital"),
-			PluginUi.statCell(gpHrLabel, "GP/slot-hr")
+		PluginUi.setHeroGridStatValue(
+			capitalLabel,
+			MarketFormat.gpCompact(totalCapital),
+			MarketFormat.gp(totalCapital) + " gp total capital"
 		);
-		PluginUi.fullWidth(strip);
+
+		JLabel gpHrLabel = new JLabel();
+		gpHrLabel.setForeground(PluginUi.POSITIVE);
+		PluginUi.setHeroGridStatValue(
+			gpHrLabel,
+			MarketFormat.gpCompact(totalGpPerSlotHr),
+			MarketFormat.gp(totalGpPerSlotHr) + " gp/slot-hr combined"
+		);
+
+		int cellW = PluginUi.heroGridCellWidth(2);
+		JPanel strip = PluginUi.summaryStrip(
+			PluginUi.statCell(capitalLabel, "Capital", cellW),
+			PluginUi.statCell(gpHrLabel, "GP/slot-hr", cellW)
+		);
+		PluginUi.fullWidthGrow(strip);
 		return strip;
 	}
 
 	private JPanel buildRow(SlotRecommendation slot)
 	{
 		JPanel card = new SidebarContentPanel();
-		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setLayout(new BorderLayout(PluginUi.SPACING_SM, 0));
 		card.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		card.setBorder(javax.swing.BorderFactory.createCompoundBorder(
-			javax.swing.BorderFactory.createMatteBorder(0, 3, 0, 0, scoreAccent(slot.getOpportunityScore())),
-			javax.swing.BorderFactory.createEmptyBorder(6, 8, 6, 8)
+		card.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 3, 0, 0, scoreAccent(slot.getOpportunityScore())),
+			BorderFactory.createEmptyBorder(
+				PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM
+			)
 		));
+		card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JPanel header = new JPanel(new BorderLayout(6, 0));
-		PluginUi.transparent(header);
 		JLabel icon = new JLabel();
 		icon.setPreferredSize(new Dimension(32, 28));
 		icon.setHorizontalAlignment(JLabel.CENTER);
 		itemManager.getImage(slot.getItemId()).addTo(icon);
 
-		JPanel titleCol = new JPanel();
-		titleCol.setLayout(new BoxLayout(titleCol, BoxLayout.Y_AXIS));
-		PluginUi.transparent(titleCol);
+		JPanel text = new JPanel();
+		text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+		text.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		text.setOpaque(false);
 
-		JLabel name = new JLabel("Slot " + slot.getSlotNumber() + " · " + slot.getItemName());
+		String title = "Slot " + slot.getSlotNumber() + " - " + slot.getItemName();
+		JLabel name = PluginUi.truncatedLabel(title, 24);
 		name.setForeground(Color.WHITE);
 		name.setFont(FontManager.getRunescapeSmallFont());
-		name.setToolTipText(slot.getItemName() + " (#" + slot.getItemId() + ")");
 
-		JLabel scoreLine = PluginUi.caption("Score " + slot.getOpportunityScore());
-		titleCol.add(name);
-		titleCol.add(scoreLine);
-		header.add(icon, BorderLayout.WEST);
-		header.add(titleCol, BorderLayout.CENTER);
-		PluginUi.fullWidth(header);
+		JLabel stats = new JLabel("<html>"
+			+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, MarketFormat.gp(slot.getEstimatedBuyPrice()))
+			+ PluginUi.htmlSpan(PluginUi.TEXT_DIM, " -> ")
+			+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, MarketFormat.gp(slot.getEstimatedSellPrice()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(Color.WHITE, MarketFormat.qtyLimit(slot.getEstimatedTradableQuantity(), slot.getBuyLimit()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(PluginUi.POSITIVE, MarketFormat.gp(Math.round(slot.getProfitPerSlotHour())) + "/hr")
+			+ "</html>");
+		stats.setFont(FontManager.getRunescapeSmallFont());
 
-		JLabel buyLabel = new JLabel(MarketFormat.gp(slot.getEstimatedBuyPrice()));
-		JLabel sellLabel = new JLabel(MarketFormat.gp(slot.getEstimatedSellPrice()));
-		JLabel netLabel = new JLabel(MarketFormat.signedGp(slot.getNetProfitPerItem()));
-		netLabel.setForeground(slot.getNetProfitPerItem() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE);
-		JLabel roiLabel = new JLabel(MarketFormat.percent(slot.getNetRoiPercent()));
-
-		JPanel metrics = PluginUi.summaryStrip(
-			PluginUi.statCell(buyLabel, "Est. buy"),
-			PluginUi.statCell(sellLabel, "Est. sell"),
-			PluginUi.statCell(netLabel, "Net / item"),
-			PluginUi.statCell(roiLabel, "Net ROI")
-		);
-		PluginUi.fullWidth(metrics);
-
-		JLabel plan = new JLabel(String.format(
-			"<html><span style='color:#cccccc;'>Qty </span>"
-				+ "<span style='color:#ffffff;'>%s</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#cccccc;'>Total </span>"
-				+ "<span style='color:#86e589;'>%s</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#cccccc;'>%s/slot-hr</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#cccccc;'>%.1fh</span></html>",
-			MarketFormat.qtyLimit(slot.getEstimatedTradableQuantity(), slot.getBuyLimit()),
-			MarketFormat.gp(slot.getEstimatedProfitAtQuantity()),
-			MarketFormat.gp(Math.round(slot.getProfitPerSlotHour())),
-			slot.getTurnoverHours()
-		));
-		plan.setFont(FontManager.getRunescapeSmallFont());
-		plan.setToolTipText(String.format(
-			"Buy %s × %s at %s each, sell at %s · %s capital",
+		String tooltip = String.format(
+			"<html>Score %d | Net %s (%s)<br>"
+				+ "Buy %s x %s at %s, sell at %s<br>"
+				+ "Total %s | Capital %s | %.1fh turnover</html>",
+			slot.getOpportunityScore(),
+			MarketFormat.signedGp(slot.getNetProfitPerItem()),
+			MarketFormat.percent(slot.getNetRoiPercent()),
 			MarketFormat.qtyLimit(slot.getEstimatedTradableQuantity(), slot.getBuyLimit()),
 			slot.getItemName(),
 			MarketFormat.gp(slot.getEstimatedBuyPrice()),
 			MarketFormat.gp(slot.getEstimatedSellPrice()),
-			MarketFormat.gp(slot.getCapitalRequired())
-		));
+			MarketFormat.gp(slot.getEstimatedProfitAtQuantity()),
+			MarketFormat.gp(slot.getCapitalRequired()),
+			slot.getTurnoverHours()
+		);
+		card.setToolTipText(tooltip);
+		name.setToolTipText(tooltip);
+		stats.setToolTipText(tooltip);
 
-		card.add(header);
-		card.add(PluginUi.gap(4));
-		card.add(metrics);
-		card.add(PluginUi.gap(2));
-		card.add(plan);
+		text.add(name);
+		text.add(stats);
+		card.add(icon, BorderLayout.WEST);
+		card.add(text, BorderLayout.CENTER);
+		PluginUi.lockRowHeight(card, ROW_HEIGHT);
 		SidebarContentPanel.lockWidth(card);
+
+		MouseAdapter hover = new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				SwingUtilities.invokeLater(() -> onItemSelected.accept(slot));
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				card.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+				text.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				card.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+				text.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			}
+		};
+		card.addMouseListener(hover);
 		return card;
 	}
 
@@ -551,5 +695,10 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		{
 			return null;
 		}
+	}
+
+	void updateMarketRefreshTimer(String text)
+	{
+		marketRefreshTimerLabel.setText(text != null ? text : " ");
 	}
 }

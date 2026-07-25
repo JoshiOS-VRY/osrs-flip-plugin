@@ -34,7 +34,7 @@ class ImportPanel extends SidebarContentPanel
 		card.add(PluginUi.cardHint(
 			"Flipping Utilities user? Export CSV from the Stats tab, then import on the web or pick a file below."
 		));
-		card.add(PluginUi.gap(8));
+		card.add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		JButton webButton = PluginUi.externalLinkButton("Import on web");
 		webButton.addActionListener(e ->
@@ -42,13 +42,13 @@ class ImportPanel extends SidebarContentPanel
 		);
 		PluginUi.fullWidth(webButton);
 		card.add(webButton);
-		card.add(PluginUi.gap(6));
+		card.add(PluginUi.gap(PluginUi.SPACING_SM));
 
-		JButton fileButton = PluginUi.secondaryButton("Choose CSV file…");
+		JButton fileButton = PluginUi.secondaryButton("Choose CSV file...");
 		fileButton.addActionListener(e -> chooseFile());
 		PluginUi.fullWidth(fileButton);
 		card.add(fileButton);
-		card.add(PluginUi.gap(6));
+		card.add(PluginUi.gap(PluginUi.SPACING_SM));
 		card.add(resultLabel);
 		add(card);
 	}
@@ -70,7 +70,7 @@ class ImportPanel extends SidebarContentPanel
 			return;
 		}
 
-		resultLabel.setText("Importing…");
+		resultLabel.setText("Importing...");
 		executorService.execute(() ->
 		{
 			try
@@ -93,7 +93,7 @@ class ImportPanel extends SidebarContentPanel
 			catch (Exception ex)
 			{
 				SwingUtilities.invokeLater(() -> resultLabel.setText(
-					"Import failed — use a Flipping Utilities CSV export from Stats"
+					"Import failed - use a Flipping Utilities CSV export from Stats"
 				));
 			}
 		});

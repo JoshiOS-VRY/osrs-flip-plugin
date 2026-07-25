@@ -15,6 +15,7 @@ public class PluginEntitlements
 	private Integer trialDaysRemaining;
 	private int maxOpportunities;
 	private long refreshIntervalMs;
+	private long publishLeadMs;
 	private int slotOptimizerSlots;
 	private boolean quickPresets;
 	private boolean advancedFilters;

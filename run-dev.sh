@@ -66,6 +66,7 @@ restore_sideload() {
 trap restore_sideload EXIT
 
 echo "Using Java: $("${JAVA_HOME}/bin/java" -version 2>&1 | head -1)"
+echo "API base URL: https://www.flipx.gg (local app: ./gradlew run -Dflipx.baseUrl=http://localhost:3000)"
 echo "Quit RuneLite.app first if it is running."
 echo "After startup: Configuration → search \"FlipX\" → enable"
 echo "Then open the FlipX sidebar panel to pair."

@@ -110,9 +110,13 @@ Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; Flip
 | `GET /api/plugin/items/{id}` | Single-item detail (with tier-scoped chart snapshots) |
 | `POST /api/plugin/slots/optimize` | Best GP/slot-hour fill for your tier's slots |
 | `GET`/`POST /api/plugin/watchlists*` | List and add/remove watchlist items |
-| `GET /api/plugin/copilot/item/{id}` · `POST /api/plugin/copilot/items` | GE overlay copilot (Ultra) |
+| `GET`/`POST`/`DELETE /api/plugin/bookmarks*` | Saved filter presets synced with the web app |
+| `POST /api/ingest/ge-events` · `POST /api/ingest/ge-reconcile` | Offer upload and slot reconciliation |
 
-Filtering, presets and score re-ranking run through the same shared `market-query` logic the web app uses, so the plugin and website show identical results for the same account. Polling respects the tier `refreshIntervalMs` (minimum **15 seconds** in-plugin, even on Elite's 5s web interval) and pauses when the Market tab is not visible.
+The GE copilot overlay reads item detail through `GET /api/plugin/items/{id}` rather than a
+dedicated copilot route.
+
+Filtering, presets and score re-ranking run through the same shared `market-query` logic the web app uses, so the plugin and website show identical results for the same account. Market polling uses the same phase-aligned schedule as the web app (`nextPublishInMs` + tier `publishLeadMs`, with tier `refreshIntervalMs` as fallback). The sidebar shows **Next refresh in Ns** (no fixed “every Xs” label). Polling pauses when the Market tab is not visible.
 
 The **GE copilot overlay** (Ultra, off by default) shows the live score and estimated economics for the item in your open Grand Exchange offer. It is display-only.
 
@@ -190,15 +194,16 @@ Build output: `build/libs/flipx-plugin-1.0.0-all.jar`
 
 ## Plugin Hub readiness
 
-- [x] Privacy policy URL (`https://flipx.gg/privacy`)
+- [x] Privacy policy URL (`https://www.flipx.gg/privacy`)
 - [x] Opt-in upload disabled by default with IP warning
 - [x] No automation disclaimer in panel
 - [x] Unofficial / not Jagex-endorsed disclaimer
 - [x] BSD-2 LICENSE
 - [x] Plugin icon (`icon.png` at repo root + classpath resource)
 - [x] `runelite-plugin.properties` with `version` and `build=standard`
-- [x] Production API URL hardcoded (`https://flipx.gg`) — not user-editable
-- [ ] Public GitHub repo + Plugin Hub PR ([submission guide](./PLUGIN_HUB.md))
+- [x] Production API URL hardcoded (`https://www.flipx.gg`) — not user-editable
+- [x] Public GitHub repo (`JoshiOS-VRY/osrs-flip-plugin`)
+- [ ] Plugin Hub PR ([submission guide](./PLUGIN_HUB.md))
 
 ## Related
 

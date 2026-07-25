@@ -42,6 +42,8 @@ public class OpportunitiesClient
 	private volatile MarketQueryRequest query = new MarketQueryRequest();
 	private volatile boolean active = false;
 	private volatile long nextRefreshAtMs = 0;
+	@Getter
+	private volatile long refreshIntervalMs = MIN_REFRESH_SECONDS * 1000L;
 	private final AtomicBoolean fetchInProgress = new AtomicBoolean(false);
 
 	private volatile Consumer<MarketQueryResponse> dataListener = data -> {};
@@ -49,6 +51,7 @@ public class OpportunitiesClient
 	private volatile Consumer<PluginState> stateListener = state -> {};
 	private volatile Consumer<String> errorListener = message -> {};
 
+	private volatile ScheduledFuture<?> alignedRefreshTask;
 	private ScheduledFuture<?> pollTask;
 
 	@Inject
@@ -103,6 +106,7 @@ public class OpportunitiesClient
 	void shutdown()
 	{
 		active = false;
+		cancelAlignedRefresh();
 		if (pollTask != null)
 		{
 			pollTask.cancel(false);
@@ -110,6 +114,21 @@ public class OpportunitiesClient
 		}
 		entitlements = null;
 		latest = null;
+	}
+
+	long getNextRefreshAtMs()
+	{
+		return nextRefreshAtMs;
+	}
+
+	boolean isActive()
+	{
+		return active;
+	}
+
+	boolean isFetchInProgress()
+	{
+		return fetchInProgress.get();
 	}
 
 	/** Called when the Market tab becomes visible/hidden. */
@@ -126,11 +145,31 @@ public class OpportunitiesClient
 	/** Update the market query and refresh immediately if the tab is visible. */
 	void setQuery(MarketQueryRequest query)
 	{
-		this.query = query != null ? query : new MarketQueryRequest();
+		MarketQueryRequest next = query != null ? query : new MarketQueryRequest();
+		if (queriesEqual(this.query, next))
+		{
+			return;
+		}
+		this.query = next;
 		if (active)
 		{
 			requestImmediateRefresh();
 		}
+	}
+
+	private static boolean queriesEqual(MarketQueryRequest a, MarketQueryRequest b)
+	{
+		if (a == b)
+		{
+			return true;
+		}
+		if (a == null || b == null)
+		{
+			return false;
+		}
+		return java.util.Objects.equals(a.getPresetId(), b.getPresetId())
+			&& java.util.Objects.equals(a.getFilters(), b.getFilters())
+			&& java.util.Objects.equals(a.getSort(), b.getSort());
 	}
 
 	void requestImmediateRefresh()
@@ -189,11 +228,19 @@ public class OpportunitiesClient
 			cachedAt = null;
 			cacheStore.write("market", response, config);
 
-			long intervalMs = response.getMeta() != null
-				? Math.max(response.getMeta().getRefreshIntervalMs(), MIN_REFRESH_SECONDS * 1000L)
-				: MIN_REFRESH_SECONDS * 1000L;
-			nextRefreshAtMs = System.currentTimeMillis() + intervalMs;
-			itemsClient.setRefreshIntervalMs(intervalMs);
+			long fallbackMs = tierFallbackIntervalMs();
+			refreshIntervalMs = fallbackMs;
+			long publishLeadMs = entitlements != null && entitlements.getPublishLeadMs() > 0
+				? entitlements.getPublishLeadMs()
+				: 500L;
+			nextRefreshAtMs = ClientSchedule.computeNextFetchAtMs(
+				response.getMeta(),
+				publishLeadMs,
+				fallbackMs,
+				System.currentTimeMillis()
+			);
+			scheduleAlignedRefresh(nextRefreshAtMs);
+			itemsClient.setRefreshIntervalMs(fallbackMs);
 			itemsClient.mergeFromMarketResponse(response);
 
 			stateListener.accept(PluginState.CONNECTED);
@@ -202,7 +249,7 @@ public class OpportunitiesClient
 		}
 		catch (PluginApiException e)
 		{
-			nextRefreshAtMs = System.currentTimeMillis() + (MIN_REFRESH_SECONDS * 1000L);
+			nextRefreshAtMs = System.currentTimeMillis() + tierFallbackIntervalMs();
 			if (e.getState() == PluginState.REPAIR_REQUIRED)
 			{
 				entitlements = null;
@@ -212,7 +259,7 @@ public class OpportunitiesClient
 		}
 		catch (IOException e)
 		{
-			nextRefreshAtMs = System.currentTimeMillis() + (MIN_REFRESH_SECONDS * 1000L);
+			nextRefreshAtMs = System.currentTimeMillis() + tierFallbackIntervalMs();
 			offline = true;
 			LocalCacheStore.CachedEntry<MarketQueryResponse> cached = cacheStore.read("market", MarketQueryResponse.class, config);
 			if (cached != null)
@@ -223,6 +270,45 @@ public class OpportunitiesClient
 			}
 			errorListener.accept(e.getMessage());
 			log.debug("Market query failed", e);
+		}
+	}
+
+	private long tierFallbackIntervalMs()
+	{
+		if (entitlements != null && entitlements.getRefreshIntervalMs() > 0)
+		{
+			return entitlements.getRefreshIntervalMs();
+		}
+		return MIN_REFRESH_SECONDS * 1000L;
+	}
+
+	static long computeNextRefreshAtMs(
+		MarketQueryResponse.Meta meta,
+		long publishLeadMs,
+		long fallbackIntervalMs,
+		long nowMs
+	)
+	{
+		return ClientSchedule.computeNextFetchAtMs(meta, publishLeadMs, fallbackIntervalMs, nowMs);
+	}
+
+	private void scheduleAlignedRefresh(long targetAtMs)
+	{
+		cancelAlignedRefresh();
+		long delayMs = Math.max(0, targetAtMs - System.currentTimeMillis());
+		alignedRefreshTask = executorService.schedule(
+			() -> executorService.execute(this::tick),
+			delayMs,
+			TimeUnit.MILLISECONDS
+		);
+	}
+
+	private void cancelAlignedRefresh()
+	{
+		if (alignedRefreshTask != null)
+		{
+			alignedRefreshTask.cancel(false);
+			alignedRefreshTask = null;
 		}
 	}
 
@@ -237,6 +323,7 @@ public class OpportunitiesClient
 			|| before.isUltra() != after.isUltra()
 			|| before.getMaxOpportunities() != after.getMaxOpportunities()
 			|| before.getRefreshIntervalMs() != after.getRefreshIntervalMs()
+			|| before.getPublishLeadMs() != after.getPublishLeadMs()
 			|| before.getSlotOptimizerSlots() != after.getSlotOptimizerSlots()
 			|| before.isQuickPresets() != after.isQuickPresets()
 			|| before.isAdvancedFilters() != after.isAdvancedFilters();

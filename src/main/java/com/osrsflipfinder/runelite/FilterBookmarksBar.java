@@ -1,6 +1,5 @@
 package com.osrsflipfinder.runelite;
 
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.FlowLayout;
 import java.util.List;
@@ -36,8 +35,8 @@ class FilterBookmarksBar extends JPanel
 	private final ScheduledExecutorServiceAdapter executor;
 
 	private final JLabel statusLabel = PluginUi.caption(" ");
-	private final JLabel cloudBadge = PluginUi.caption("Local · up to " + LOCAL_LIMIT);
-	private final JPanel chipsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+	private final JLabel cloudBadge = PluginUi.caption("Local | up to " + LOCAL_LIMIT);
+	private final JPanel chipsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, PluginUi.SPACING_XS, PluginUi.SPACING_XS));
 	private final JPanel savePanel = new JPanel();
 	private final JTextField nameField = PluginUi.textField("");
 	private final JLabel saveErrorLabel = PluginUi.hint(" ");
@@ -65,21 +64,31 @@ class FilterBookmarksBar extends JPanel
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		PluginUi.transparent(this);
 		setAlignmentX(Component.LEFT_ALIGNMENT);
+		SidebarContentPanel.lockWidth(this);
 
-		JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-		PluginUi.transparent(header);
 		JLabel title = PluginUi.caption("Saved views");
 		title.setForeground(PluginUi.GOLD);
-		header.add(title);
-		cloudBadge.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		header.add(cloudBadge);
 		JButton saveButton = PluginUi.linkButton("Save current");
 		saveButton.addActionListener(e -> toggleSavePanel());
-		header.add(saveButton);
-		PluginUi.fullWidth(header);
-		add(header);
-		add(PluginUi.gap(4));
 
+		JPanel titleRow = new SidebarContentPanel();
+		titleRow.setLayout(new BoxLayout(titleRow, BoxLayout.X_AXIS));
+		PluginUi.transparent(titleRow);
+		title.setAlignmentX(Component.LEFT_ALIGNMENT);
+		saveButton.setAlignmentX(Component.RIGHT_ALIGNMENT);
+		titleRow.add(title);
+		titleRow.add(javax.swing.Box.createHorizontalGlue());
+		titleRow.add(saveButton);
+		SidebarContentPanel.lockWidth(titleRow);
+
+		cloudBadge.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		cloudBadge.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JPanel header = PluginUi.verticalStack(titleRow, cloudBadge);
+		add(header);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+
+		chipsPanel.setMaximumSize(new java.awt.Dimension(SidebarContentPanel.INNER_WIDTH, Short.MAX_VALUE));
 		PluginUi.transparent(chipsPanel);
 		chipsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		add(chipsPanel);
@@ -98,13 +107,13 @@ class FilterBookmarksBar extends JPanel
 	void refresh()
 	{
 		loading = true;
-		statusLabel.setText("Loading bookmarks…");
+		statusLabel.setText("Loading bookmarks...");
 		chipsPanel.removeAll();
 		chipsPanel.revalidate();
 		chipsPanel.repaint();
 
 		boolean cloudSync = Boolean.TRUE.equals(cloudSyncSupplier.get());
-		cloudBadge.setText(cloudSync ? "Cloud · synced" : "Local · up to " + LOCAL_LIMIT);
+		cloudBadge.setText(cloudSync ? "Cloud | synced" : "Local | up to " + LOCAL_LIMIT);
 		cloudBadge.setForeground(cloudSync ? PluginUi.GOLD : ColorScheme.LIGHT_GRAY_COLOR);
 
 		executor.execute(() ->
@@ -125,11 +134,11 @@ class FilterBookmarksBar extends JPanel
 		savePanel.setLayout(new BoxLayout(savePanel, BoxLayout.Y_AXIS));
 		PluginUi.transparent(savePanel);
 		savePanel.add(PluginUi.caption("Name this view"));
-		savePanel.add(PluginUi.gap(4));
+		savePanel.add(PluginUi.gap(PluginUi.SPACING_XS));
 		nameField.setToolTipText("e.g. Safe mid flips");
 		savePanel.add(PluginUi.labeledField("Name", nameField));
 		savePanel.add(saveErrorLabel);
-		savePanel.add(PluginUi.gap(4));
+		savePanel.add(PluginUi.gap(PluginUi.SPACING_XS));
 		JButton confirm = PluginUi.secondaryButton("Save bookmark");
 		confirm.addActionListener(e -> saveBookmark());
 		JButton cancel = PluginUi.linkButton("Cancel");
@@ -165,7 +174,7 @@ class FilterBookmarksBar extends JPanel
 		{
 			return;
 		}
-		saveErrorLabel.setText("Saving…");
+		saveErrorLabel.setText("Saving...");
 		boolean cloudSync = Boolean.TRUE.equals(cloudSyncSupplier.get());
 		FilterBookmark draft = snapshotBuilder.build(name);
 
@@ -263,7 +272,7 @@ class FilterBookmarksBar extends JPanel
 		String label = bookmark.getName();
 		if (bookmark.isLocalOnly())
 		{
-			label += " · local";
+			label += " | local";
 		}
 		JButton chip = PluginUi.secondaryButton(label);
 		boolean active = bookmark.getId() != null && bookmark.getId().equals(activeBookmarkId);

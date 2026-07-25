@@ -1,13 +1,14 @@
 package com.osrsflipfinder.runelite;
 
 import java.awt.BorderLayout;
-import java.awt.CardLayout;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
@@ -27,7 +28,7 @@ import net.runelite.client.ui.laf.RuneLiteScrollBarUI;
 import net.runelite.client.util.LinkBrowser;
 
 /**
- * Unified FlipX sidebar with a section dropdown — one view at a time instead of
+ * Unified FlipX sidebar with a section dropdown - one view at a time instead of
  * one long scroll stack.
  */
 @Slf4j
@@ -68,10 +69,12 @@ public class FlipFinderPanel extends PluginPanel
 	private final JPanel pairingForm = new JPanel();
 	private final JPanel connectedSummary = new JPanel();
 	private final JPanel connectionViewPanel = new JPanel();
-	private final JPanel sectionContent = new JPanel(new CardLayout());
+	private final SectionContentHost sectionContent = new SectionContentHost();
 	private final JComboBox<String> sectionCombo = new JComboBox<>(sectionLabels());
 	private SidebarSection currentSection = SidebarSection.CONNECTION;
 	private boolean sidebarActive;
+	private volatile PluginState authFailureState;
+	private ScheduledFuture<?> refreshTimerUiTask;
 
 	@Inject
 	FlipFinderPanel(
@@ -114,16 +117,17 @@ public class FlipFinderPanel extends PluginPanel
 		buildSectionNav();
 
 		JPanel layoutPanel = new SidebarContentPanel();
+		layoutPanel.setBorder(PluginUi.pageInsets());
 		layoutPanel.setLayout(new BoxLayout(layoutPanel, BoxLayout.Y_AXIS));
 		layoutPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		layoutPanel.add(PluginUi.header(
 			"FlipX",
-			"v" + PLUGIN_VERSION + " · Market & portfolio sync",
+			"v" + PLUGIN_VERSION + " | Market & portfolio sync",
 			statusBadge
 		));
-		layoutPanel.add(PluginUi.gap(6));
+		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
 		layoutPanel.add(PluginUi.labeledField("View", sectionCombo));
-		layoutPanel.add(PluginUi.gap(8));
+		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_MD));
 		layoutPanel.add(sectionContent);
 		SidebarContentPanel.lockWidth(layoutPanel);
 		add(layoutPanel, BorderLayout.NORTH);
@@ -150,12 +154,17 @@ public class FlipFinderPanel extends PluginPanel
 				recipeFlipsPanel.load();
 			}
 		});
+		portfolioClient.setAuthFailureListener(state -> onStateChanged(state));
 
 		marketPanel.setScrollToTop(this::scrollSidebarToTop);
 
 		geEventListener.addOfferChangeListener(() -> SwingUtilities.invokeLater(mySlotsPanel::refreshLocal));
 
 		showSection(defaultSectionForState());
+		if (PairingCredentials.clearIfApiHostChanged(configManager, config))
+		{
+			onError("API URL changed - pair again in Connection (flipx.gg).");
+		}
 		refreshUi();
 	}
 
@@ -174,15 +183,6 @@ public class FlipFinderPanel extends PluginPanel
 	{
 		PluginUi.styleCombo(sectionCombo);
 		sectionCombo.setToolTipText("Choose a FlipX sidebar section");
-
-		sectionContent.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		sectionContent.setAlignmentX(JPanel.LEFT_ALIGNMENT);
-		SidebarContentPanel.lockWidth(sectionContent);
-
-		for (SidebarSection section : SidebarSection.navOrder())
-		{
-			sectionContent.add(panelForSection(section), section.name());
-		}
 	}
 
 	private JPanel panelForSection(SidebarSection section)
@@ -216,10 +216,13 @@ public class FlipFinderPanel extends PluginPanel
 	private void showSection(SidebarSection section)
 	{
 		currentSection = section;
-		((CardLayout) sectionContent.getLayout()).show(sectionContent, section.name());
+		sectionContent.showSection(panelForSection(section));
 		scrollSidebarToTop();
 		applySectionActiveStates();
 		refreshSectionData(section);
+		tickRefreshTimerLabels();
+		revalidate();
+		repaint();
 	}
 
 	private void refreshSectionData(SidebarSection section)
@@ -277,8 +280,70 @@ public class FlipFinderPanel extends PluginPanel
 		applySectionActiveStates();
 		if (active)
 		{
+			startRefreshTimerUi();
 			refreshSectionData(currentSection);
+			tickRefreshTimerLabels();
 		}
+		else
+		{
+			stopRefreshTimerUi();
+		}
+	}
+
+	private void startRefreshTimerUi()
+	{
+		if (refreshTimerUiTask != null)
+		{
+			return;
+		}
+		refreshTimerUiTask = executorService.scheduleAtFixedRate(
+			() -> SwingUtilities.invokeLater(this::tickRefreshTimerLabels),
+			0,
+			1,
+			TimeUnit.SECONDS
+		);
+	}
+
+	private void stopRefreshTimerUi()
+	{
+		if (refreshTimerUiTask != null)
+		{
+			refreshTimerUiTask.cancel(false);
+			refreshTimerUiTask = null;
+		}
+	}
+
+	private void tickRefreshTimerLabels()
+	{
+		if (!sidebarActive)
+		{
+			return;
+		}
+		boolean paired = isPairedForMarket();
+		switch (currentSection)
+		{
+			case MARKET:
+				marketPanel.updateRefreshTimer(paired);
+				break;
+			case MY_SLOTS:
+				mySlotsPanel.updateRefreshTimer(paired);
+				break;
+		case SESSION:
+				sessionStatsPanel.updateRefreshTimer(paired);
+				break;
+			case RECIPE_FLIPS:
+				recipeFlipsPanel.updateRefreshTimer();
+				break;
+			default:
+				break;
+		}
+	}
+
+	private boolean portfolioPollingEnabled()
+	{
+		return config.enableUpload()
+			|| currentSection == SidebarSection.MY_SLOTS
+			|| currentSection == SidebarSection.SESSION;
 	}
 
 	private void applySectionActiveStates()
@@ -287,7 +352,7 @@ public class FlipFinderPanel extends PluginPanel
 		boolean paired = isPairedForMarket();
 
 		marketPanel.setActive(active && paired && currentSection == SidebarSection.MARKET);
-		portfolioClient.setActive(active && paired && config.enableUpload());
+		portfolioClient.setActive(active && paired && portfolioPollingEnabled());
 		geSetupPanel.setActive(active && currentSection == SidebarSection.GE_SETUP);
 		mySlotsPanel.setActive(active && currentSection == SidebarSection.MY_SLOTS);
 	}
@@ -316,31 +381,26 @@ public class FlipFinderPanel extends PluginPanel
 		PluginUi.transparent(pairingForm);
 
 		pairingForm.add(PluginUi.hint(
-			"Unofficial tool — not endorsed by Jagex. Does not place or modify GE offers."
+			"Unofficial tool - not endorsed by Jagex. Does not place or modify GE offers."
 		));
-		pairingForm.add(PluginUi.gap(6));
-		pairingForm.add(PluginUi.hint(
-			"Enable GE upload or the Market panel in plugin settings, then pair below."
-		));
-		pairingForm.add(PluginUi.gap(10));
-		pairingForm.add(PluginUi.labeledField("Pairing code", codeField));
-		pairingForm.add(PluginUi.gap(10));
-		pairingForm.add(connectButton);
+		pairingForm.add(PluginUi.gap(PluginUi.SPACING_SM));
+		JPanel pairingInner = PluginUi.verticalStack(
+			PluginUi.hint(
+				"Enable GE upload or the Market panel in plugin settings, then pair below."
+			),
+			PluginUi.labeledField("Pairing code", codeField),
+			connectButton
+		);
 		PluginUi.fullWidth(connectButton);
+		pairingForm.add(PluginUi.formCard(pairingInner));
 		SidebarContentPanel.lockWidth(pairingForm);
 
 		connectedSummary.setLayout(new BoxLayout(connectedSummary, BoxLayout.Y_AXIS));
 		PluginUi.transparent(connectedSummary);
-		JPanel summaryCard = PluginUi.card();
-		summaryCard.add(metaLabel);
-		summaryCard.add(PluginUi.gap(4));
-		summaryCard.add(queueLabel);
-		summaryCard.add(PluginUi.gap(4));
-		summaryCard.add(lastSyncLabel);
-		summaryCard.add(PluginUi.gap(8));
-		summaryCard.add(disconnectButton);
-		PluginUi.fullWidth(summaryCard);
+		JPanel summaryInner = PluginUi.verticalStack(metaLabel, queueLabel, lastSyncLabel, disconnectButton);
 		PluginUi.fullWidth(disconnectButton);
+		JPanel summaryCard = PluginUi.formCard(summaryInner);
+		PluginUi.fullWidth(summaryCard);
 		connectedSummary.add(summaryCard);
 		SidebarContentPanel.lockWidth(connectedSummary);
 
@@ -351,9 +411,9 @@ public class FlipFinderPanel extends PluginPanel
 		PluginUi.transparent(connectionViewPanel);
 		connectionViewPanel.add(pairingForm);
 		connectionViewPanel.add(connectedSummary);
-		connectionViewPanel.add(PluginUi.gap(8));
+		connectionViewPanel.add(PluginUi.gap(PluginUi.SPACING_MD));
 		connectionViewPanel.add(footerLinks);
-		connectionViewPanel.add(PluginUi.gap(6));
+		connectionViewPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
 		connectionViewPanel.add(errorLabel);
 		SidebarContentPanel.lockWidth(connectionViewPanel);
 	}
@@ -362,20 +422,25 @@ public class FlipFinderPanel extends PluginPanel
 	{
 		SwingUtilities.invokeLater(() ->
 		{
+			if (PairingCredentials.clearIfApiHostChanged(configManager, config))
+			{
+				onError("API URL changed - pair again in Connection (flipx.gg).");
+			}
 			PluginState state = resolveState();
 			updateStatusBadge(state);
 			updateConnectionLayout(state);
 			updateMeta();
 			queueLabel.setText("Queue: " + ingestClient.getQueueSize() + " events");
-			disconnectButton.setEnabled(!config.apiKey().isBlank());
+			disconnectButton.setEnabled(PairingCredentials.isPaired(config));
 			applySectionActiveStates();
+			marketPanel.refreshUi();
 			refreshSectionData(currentSection);
 		});
 	}
 
 	private boolean isPairedForMarket()
 	{
-		return config.apiKey() != null && !config.apiKey().isBlank();
+		return PairingCredentials.isPairedForCurrentApi(config);
 	}
 
 	private void updateConnectionLayout(PluginState state)
@@ -431,21 +496,16 @@ public class FlipFinderPanel extends PluginPanel
 					"RuneLite"
 				);
 
-				configManager.setConfiguration(FlipFinderConfig.GROUP, "apiKey", result.getApiKey());
-				configManager.setConfiguration(
-					FlipFinderConfig.GROUP,
-					"pairedAt",
-					Instant.now().toString()
-				);
+				PairingCredentials.save(configManager, result.getApiKey());
 
 				SwingUtilities.invokeLater(() ->
 				{
 					codeField.setText("");
 					connectButton.setEnabled(true);
 					disconnectButton.setEnabled(true);
-					onStateChanged(PluginState.CONNECTED);
 					onError(null);
-					updateMeta();
+					refreshUi();
+					geEventListener.backfillAllSlots();
 					selectSection(SidebarSection.MY_SLOTS);
 				});
 			}
@@ -486,16 +546,13 @@ public class FlipFinderPanel extends PluginPanel
 
 			SwingUtilities.invokeLater(() ->
 			{
-				configManager.unsetConfiguration(FlipFinderConfig.GROUP, "apiKey");
-				configManager.unsetConfiguration(FlipFinderConfig.GROUP, "pairedAt");
+				PairingCredentials.clear(configManager);
 				codeField.setText("");
 				connectButton.setEnabled(true);
 				disconnectButton.setEnabled(false);
-				onStateChanged(PluginState.NOT_PAIRED);
 				onError(null);
-				updateMeta();
+				refreshUi();
 				selectSection(SidebarSection.CONNECTION);
-				marketPanel.refreshUi();
 			});
 		});
 	}
@@ -518,7 +575,11 @@ public class FlipFinderPanel extends PluginPanel
 
 	private PluginState resolveState()
 	{
-		if (config.apiKey() == null || config.apiKey().isBlank())
+		if (authFailureState == PluginState.REPAIR_REQUIRED && PairingCredentials.isPaired(config))
+		{
+			return PluginState.REPAIR_REQUIRED;
+		}
+		if (!PairingCredentials.isPairedForCurrentApi(config))
 		{
 			return PluginState.NOT_PAIRED;
 		}
@@ -545,7 +606,7 @@ public class FlipFinderPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			lastSyncLabel.setText(String.format(
-				"Last sync %s · +%d · skipped %d",
+				"Last sync %s | +%d | skipped %d",
 				TIME_FORMAT.format(stats.getSyncedAt()),
 				stats.getInserted(),
 				stats.getSkipped()
@@ -558,25 +619,34 @@ public class FlipFinderPanel extends PluginPanel
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			updateStatusBadge(state);
-			updateConnectionLayout(state);
-			queueLabel.setText("Queue: " + ingestClient.getQueueSize() + " events");
+			if (state == PluginState.REPAIR_REQUIRED || state == PluginState.UPGRADE_REQUIRED)
+			{
+				authFailureState = state;
+			}
+			else if (state == PluginState.CONNECTED)
+			{
+				authFailureState = null;
+			}
+
 			if (state == PluginState.REPAIR_REQUIRED || state == PluginState.NOT_PAIRED)
 			{
-				disconnectButton.setEnabled(false);
+				refreshUi();
+				if (state == PluginState.REPAIR_REQUIRED)
+				{
+					onError("Invalid API key - pair again in Connection.");
+				}
 				if (currentSection != SidebarSection.CONNECTION)
 				{
 					selectSection(SidebarSection.CONNECTION);
 				}
-				else
-				{
-					applySectionActiveStates();
-				}
+				return;
 			}
-			else if (state == PluginState.CONNECTED)
-			{
-				applySectionActiveStates();
-			}
+
+			// Avoid re-fetching market on every successful poll (refreshUi -> requestMarketRefresh loop).
+			updateStatusBadge(resolveState());
+			queueLabel.setText("Queue: " + ingestClient.getQueueSize() + " events");
+			disconnectButton.setEnabled(PairingCredentials.isPaired(config));
+			applySectionActiveStates();
 		});
 	}
 

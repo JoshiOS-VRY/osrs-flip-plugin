@@ -1,19 +1,26 @@
 package com.osrsflipfinder.runelite;
 
+import java.awt.BorderLayout;
+import java.awt.Color;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
+import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
-import java.util.concurrent.ScheduledExecutorService;
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.util.LinkBrowser;
 
 /** Read-only recipe flip opportunities (Ultra+). */
 class RecipeFlipsPanel extends SidebarContentPanel
 {
+	private static final int ROW_HEIGHT = 48;
+
 	private final FlipFinderConfig config;
 	private final PluginApiClient apiClient;
 	private final OpportunitiesClient opportunitiesClient;
@@ -21,6 +28,7 @@ class RecipeFlipsPanel extends SidebarContentPanel
 
 	private final JPanel list = PluginUi.listContainer();
 	private final JLabel statusLabel = PluginUi.caption(" ");
+	private final JLabel refreshTimerLabel = PluginUi.caption("Updates when you open this tab");
 
 	@Inject
 	RecipeFlipsPanel(
@@ -37,8 +45,15 @@ class RecipeFlipsPanel extends SidebarContentPanel
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		PluginUi.transparent(this);
-		add(list);
 		add(statusLabel);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+		refreshTimerLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		add(refreshTimerLabel);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+
+		PluginUi.fullWidthGrow(list);
+		add(list);
+		add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		JButton link = PluginUi.externalLinkButton("Full list on web");
 		link.addActionListener(e ->
@@ -48,13 +63,20 @@ class RecipeFlipsPanel extends SidebarContentPanel
 		add(link);
 	}
 
+	void updateRefreshTimer()
+	{
+		refreshTimerLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		refreshTimerLabel.setText("Updates when you open this tab");
+	}
+
 	void load()
 	{
 		list.removeAll();
 
 		if (config.apiKey() == null || config.apiKey().isBlank())
 		{
-			statusLabel.setText("Pair your device above to view recipe flips");
+			statusLabel.setText("Pair required");
+			list.add(PluginUi.emptyState("Pair your device in Connection to view recipe flips."));
 			revalidate();
 			repaint();
 			return;
@@ -62,7 +84,8 @@ class RecipeFlipsPanel extends SidebarContentPanel
 
 		if (!config.enableMarketPanel())
 		{
-			statusLabel.setText("Enable \"Market panel\" in plugin settings");
+			statusLabel.setText("Market panel off");
+			list.add(PluginUi.emptyState("Enable \"Market panel\" in plugin settings."));
 			revalidate();
 			repaint();
 			return;
@@ -71,7 +94,7 @@ class RecipeFlipsPanel extends SidebarContentPanel
 		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
 		if (entitlements == null)
 		{
-			statusLabel.setText("Loading account…");
+			statusLabel.setText("Loading account...");
 			opportunitiesClient.requestImmediateRefresh();
 			revalidate();
 			repaint();
@@ -80,13 +103,14 @@ class RecipeFlipsPanel extends SidebarContentPanel
 
 		if (!entitlements.isRecipeFlips())
 		{
-			statusLabel.setText("Ultra subscription required");
+			statusLabel.setText("Ultra required");
+			list.add(PluginUi.emptyState("Recipe flips need an Ultra subscription."));
 			revalidate();
 			repaint();
 			return;
 		}
 
-		statusLabel.setText("Loading…");
+		statusLabel.setText("Loading...");
 		executorService.execute(() ->
 		{
 			try
@@ -98,14 +122,18 @@ class RecipeFlipsPanel extends SidebarContentPanel
 			{
 				SwingUtilities.invokeLater(() ->
 				{
+					list.removeAll();
 					if (ex.getState() == PluginState.UPGRADE_REQUIRED)
 					{
-						statusLabel.setText("Ultra subscription required");
+						statusLabel.setText("Ultra required");
+						list.add(PluginUi.emptyState("Recipe flips need an Ultra subscription."));
 					}
 					else
 					{
 						statusLabel.setText(ex.getMessage());
 					}
+					revalidate();
+					repaint();
 				});
 			}
 			catch (IOException ex)
@@ -121,7 +149,8 @@ class RecipeFlipsPanel extends SidebarContentPanel
 		List<RecipeOpportunity> recipes = response != null ? response.getRecipes() : null;
 		if (recipes == null || recipes.isEmpty())
 		{
-			statusLabel.setText("No recipe opportunities");
+			statusLabel.setText("No recipes");
+			list.add(PluginUi.emptyState("No recipe opportunities match right now."));
 			revalidate();
 			repaint();
 			return;
@@ -134,17 +163,62 @@ class RecipeFlipsPanel extends SidebarContentPanel
 			{
 				break;
 			}
-			JPanel row = PluginUi.card();
-			JLabel title = new JLabel(recipe.getName());
-			title.setForeground(java.awt.Color.WHITE);
-			row.add(title);
-			row.add(PluginUi.caption("Net " + MarketFormat.signedGp(recipe.getNetProfit())
-				+ " · ROI " + MarketFormat.percent(recipe.getRoiPercent())));
-			list.add(row);
+			list.add(buildRow(recipe));
+			list.add(PluginUi.gap(PluginUi.SPACING_XS));
 			shown++;
 		}
 		statusLabel.setText(recipes.size() + " recipes ranked");
 		revalidate();
 		repaint();
+	}
+
+	private JPanel buildRow(RecipeOpportunity recipe)
+	{
+		JPanel row = new SidebarContentPanel();
+		row.setLayout(new BorderLayout(PluginUi.SPACING_SM, 0));
+		row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		row.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 3, 0, 0, scoreAccent(recipe.getNetProfit())),
+			BorderFactory.createEmptyBorder(
+				PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM
+			)
+		));
+		row.setAlignmentX(LEFT_ALIGNMENT);
+
+		JPanel text = new JPanel();
+		text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+		text.setOpaque(false);
+
+		JLabel title = PluginUi.truncatedLabel(recipe.getName() != null ? recipe.getName() : "Recipe", 24);
+		title.setForeground(Color.WHITE);
+		title.setFont(FontManager.getRunescapeSmallFont());
+
+		Color netColor = recipe.getNetProfit() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE;
+		JLabel stats = new JLabel("<html>"
+			+ PluginUi.htmlSpan(netColor, "Net " + MarketFormat.signedGp(recipe.getNetProfit()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, "ROI " + MarketFormat.percent(recipe.getRoiPercent()))
+			+ "</html>");
+		stats.setFont(FontManager.getRunescapeSmallFont());
+
+		text.add(title);
+		text.add(stats);
+		row.add(text, BorderLayout.CENTER);
+		PluginUi.lockRowHeight(row, ROW_HEIGHT);
+		SidebarContentPanel.lockWidth(row);
+		return row;
+	}
+
+	private static Color scoreAccent(long netProfit)
+	{
+		if (netProfit > 0)
+		{
+			return PluginUi.POSITIVE;
+		}
+		if (netProfit < 0)
+		{
+			return PluginUi.NEGATIVE;
+		}
+		return ColorScheme.MEDIUM_GRAY_COLOR;
 	}
 }

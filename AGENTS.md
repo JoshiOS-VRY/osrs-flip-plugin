@@ -1,5 +1,9 @@
 # RuneLite Plugin Development — Agent Guidelines
 
+## FlipX workspace
+
+This plugin is half of the **FlipX** monorepo. Backend and data live in **`../osrs-flip-app`** (Next.js + Supabase). Do not point Supabase MCP at random projects — FlipX DB migrations and SQL use MCP **`user-supabase-osrs-flip-app-db`** on the web app repo’s `supabase/migrations/`.
+
 ## Logging
 
 - Use `log.debug()` for developer/diagnostic logging.
@@ -73,10 +77,14 @@ You cannot verify plugin behavior yourself. Even if you have screen-capture or c
 
 ## Sidebar UI (PluginPanel)
 
+**Full spec:** [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) — spacing, typography, colors, and layout patterns aligned with the [RuneLite Client API](https://static.runelite.net/runelite-client/apidocs/).
+
 Follow RuneLite's built-in sidebar model — do not fight it with custom Swing hacks.
 
 - Extend `PluginPanel` with the default constructor (`super()` / `wrap=true`). Build content into `BorderLayout.NORTH` (see Loot Tracker's `LootTrackerPanel`).
 - Content width is **`PluginPanel.PANEL_WIDTH` (225px)**. The wrapped panel is **242px** wide to reserve **`PluginPanel.SCROLLBAR_WIDTH` (17px)** layout gutter beside content.
+- Apply **`PluginUi.pageInsets()`** on the main layout shell; stack controls at **`SidebarContentPanel.INNER_WIDTH`**, not full 225px, or text clips at the edges.
+- **Checkboxes:** always `PluginUi.checkBox` — custom gold check icons (`styleCheckBox`); never rely on default FlatLaf checkmarks on dark panels.
 - **Do not** add nested `JScrollPane`s, manual scrollbar gutters, or `setPreferredSize` on `JScrollBar`. RuneLite LAF (`RuneLiteLAF.properties`) paints a **7px** dark scrollbar via `RuneLiteScrollBarUI`; overriding width triggers native OS scrollbars (blue/fat on macOS).
 - If you call `SwingUtilities.updateComponentTreeUI()` on the panel, call `reapplyScrollBarLaf()` afterward — tree UI refresh resets scrollbar LAF on macOS.
 - **Do not** use `GridLayout` without fixed row heights inside views that can stretch (`CardLayout`, tall parents) — cells expand vertically and break stat cards.

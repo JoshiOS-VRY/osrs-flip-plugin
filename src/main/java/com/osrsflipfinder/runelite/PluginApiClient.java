@@ -50,31 +50,32 @@ public class PluginApiClient
 
 	<T> T get(String path, Class<T> type) throws IOException
 	{
-		Request request = authorized(new Request.Builder().url(url(path)).get()).build();
-		return execute(request, type);
+		String apiKeyUsed = config.apiKey();
+		Request request = authorized(new Request.Builder().url(url(path)).get(), apiKeyUsed).build();
+		return execute(request, type, apiKeyUsed);
 	}
 
 	<T> T post(String path, Object body, Class<T> type) throws IOException
 	{
+		String apiKeyUsed = config.apiKey();
 		String json = body != null ? gson.toJson(body) : "{}";
 		Request request = authorized(
-			new Request.Builder().url(url(path)).post(RequestBody.create(JSON, json))
+			new Request.Builder().url(url(path)).post(RequestBody.create(JSON, json)),
+			apiKeyUsed
 		).build();
-		return execute(request, type);
+		return execute(request, type, apiKeyUsed);
 	}
 
 	void delete(String path) throws IOException
 	{
-		Request request = authorized(new Request.Builder().url(url(path)).delete()).build();
+		String apiKeyUsed = config.apiKey();
+		Request request = authorized(new Request.Builder().url(url(path)).delete(), apiKeyUsed).build();
 		try (Response response = httpClient.newCall(request).execute())
 		{
 			if (response.code() == 401)
 			{
-				if (!config.apiKey().isBlank())
-				{
-					clearApiKey();
-				}
-				throw new PluginApiException(PluginState.REPAIR_REQUIRED, "Invalid API key — re-pair required");
+				clearApiKeyAfterAuthFailure(apiKeyUsed);
+				throw new PluginApiException(PluginState.REPAIR_REQUIRED, "Invalid API key - re-pair required");
 			}
 			if (response.code() == 403)
 			{
@@ -91,9 +92,9 @@ public class PluginApiClient
 		}
 	}
 
-	private Request.Builder authorized(Request.Builder builder)
+	private Request.Builder authorized(Request.Builder builder, String apiKey)
 	{
-		return builder.addHeader("Authorization", "Bearer " + config.apiKey());
+		return builder.addHeader("Authorization", "Bearer " + apiKey);
 	}
 
 	private String url(String path)
@@ -101,7 +102,7 @@ public class PluginApiClient
 		return FlipXConstants.baseUrl() + path;
 	}
 
-	private <T> T execute(Request request, Class<T> type) throws IOException
+	private <T> T execute(Request request, Class<T> type, String apiKeyUsed) throws IOException
 	{
 		try (Response response = httpClient.newCall(request).execute())
 		{
@@ -110,11 +111,8 @@ public class PluginApiClient
 
 			if (response.code() == 401)
 			{
-				if (!config.apiKey().isBlank())
-				{
-					clearApiKey();
-				}
-				throw new PluginApiException(PluginState.REPAIR_REQUIRED, "Invalid API key — re-pair required");
+				clearApiKeyAfterAuthFailure(apiKeyUsed);
+				throw new PluginApiException(PluginState.REPAIR_REQUIRED, "Invalid API key - re-pair required");
 			}
 
 			if (response.code() == 403)
@@ -133,10 +131,23 @@ public class PluginApiClient
 		}
 	}
 
-	private void clearApiKey()
+	private void clearApiKeyAfterAuthFailure(String apiKeyUsed)
 	{
-		configManager.unsetConfiguration(FlipFinderConfig.GROUP, "apiKey");
-		configManager.unsetConfiguration(FlipFinderConfig.GROUP, "pairedAt");
+		if (apiKeyUsed == null || apiKeyUsed.isBlank())
+		{
+			return;
+		}
+		if (!apiKeyUsed.equals(config.apiKey()))
+		{
+			log.debug("Ignoring 401 for a superseded API key");
+			return;
+		}
+		if (PairingCredentials.isWithinPairingGracePeriod())
+		{
+			log.debug("Ignoring 401 during pairing grace period");
+			return;
+		}
+		PairingCredentials.clear(configManager);
 	}
 
 	private static String parseErrorMessage(String raw, String fallback)

@@ -13,6 +13,8 @@ public class SlotsOptimizeRequest
 	private Double minConfidence;
 	private MarketQueryRequest.MarketFilters filters;
 	private List<MarketQueryRequest.Sort> sort;
+	private Integer availableSlots;
+	private List<Integer> excludeItemIds;
 
 	public void setRankSort(String sortId, boolean desc)
 	{

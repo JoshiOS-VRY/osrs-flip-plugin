@@ -22,7 +22,6 @@ class MarketFiltersPanel
 	private static final String[] MEMBERS_VALUES = { "all", "members", "f2p" };
 	private static final String[] MEMBERS_LABELS = { "All worlds", "Members only", "F2P only" };
 
-	private final FlipFinderConfig config;
 	private final ConfigManager configManager;
 	private final CoinBalanceService coinBalanceService;
 	private final Runnable onChange;
@@ -38,7 +37,7 @@ class MarketFiltersPanel
 	private final JTextField minTotalProfitField = PluginUi.textField("");
 	private final JTextField minGpPerHourField = PluginUi.textField("");
 	private final JComboBox<String> membersCombo = new JComboBox<>(new DefaultComboBoxModel<>(MEMBERS_LABELS));
-	private final JLabel coinsLabel = PluginUi.caption("Inventory coins: —");
+	private final JLabel coinsLabel = PluginUi.caption("Inventory coins: -");
 	private final JButton useCoinsButton = PluginUi.linkButton("Use as max capital");
 	private final JLabel advancedHint = PluginUi.hint("Pro unlocks quality filters, max capital, and more.");
 
@@ -48,13 +47,11 @@ class MarketFiltersPanel
 	private boolean suppressEvents = false;
 
 	MarketFiltersPanel(
-		FlipFinderConfig config,
 		ConfigManager configManager,
 		CoinBalanceService coinBalanceService,
 		Runnable onChange
 	)
 	{
-		this.config = config;
 		this.configManager = configManager;
 		this.coinBalanceService = coinBalanceService;
 		this.onChange = onChange;
@@ -62,6 +59,8 @@ class MarketFiltersPanel
 		styleMembersCombo();
 		buildAdvancedBody();
 		wireListeners();
+		advancedBody.setVisible(false);
+		advancedHint.setVisible(true);
 		restoreFromConfig();
 	}
 
@@ -69,20 +68,21 @@ class MarketFiltersPanel
 	{
 		if (section == null)
 		{
-			JPanel body = new JPanel();
-			body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
-			PluginUi.transparent(body);
-			body.add(coinsLabel);
-			body.add(PluginUi.gap(4));
+			JPanel coreFilters = PluginUi.verticalStack(
+				coinsLabel,
+				useCoinsButton,
+				PluginUi.labeledField("Min net / item", minNetProfitField),
+				PluginUi.labeledField("Min ROI %", minRoiField),
+				PluginUi.labeledField("Members", membersCombo)
+			);
 			useCoinsButton.addActionListener(e -> applyInventoryCoinsToField());
 			PluginUi.fullWidth(useCoinsButton);
-			body.add(PluginUi.gap(8));
-			body.add(PluginUi.labeledField("Min net / item", minNetProfitField));
-			body.add(PluginUi.gap(6));
-			body.add(PluginUi.labeledField("Min ROI %", minRoiField));
-			body.add(PluginUi.gap(6));
-			body.add(PluginUi.labeledField("Members", membersCombo));
-			body.add(PluginUi.gap(8));
+
+			JPanel body = new SidebarContentPanel();
+			body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+			PluginUi.transparent(body);
+			body.add(coreFilters);
+			body.add(PluginUi.gap(PluginUi.SPACING_MD));
 			body.add(advancedBody);
 			body.add(advancedHint);
 
@@ -94,12 +94,14 @@ class MarketFiltersPanel
 	void setAdvancedEnabled(boolean enabled)
 	{
 		advancedEnabled = enabled;
-		advancedBody.setVisible(enabled);
-		advancedHint.setVisible(!enabled);
+		boolean showAdvanced = enabled || hasIgnoredAdvancedFilters();
+		advancedBody.setVisible(showAdvanced);
+		advancedHint.setVisible(!showAdvanced);
 
-		hideLowConfidence.setEnabled(enabled);
-		discountOnly.setEnabled(enabled);
-		dumpedOnly.setEnabled(enabled);
+		hideLowConfidence.setEnabled(showAdvanced);
+		discountOnly.setEnabled(showAdvanced);
+		dumpedOnly.setEnabled(showAdvanced);
+
 		maxCapitalField.setEnabled(enabled);
 		useInventoryCoins.setEnabled(enabled);
 		minTotalProfitField.setEnabled(enabled);
@@ -120,14 +122,14 @@ class MarketFiltersPanel
 		{
 			return false;
 		}
-		return config.marketHideLowConfidence()
-			|| config.marketDiscountOnly()
-			|| config.marketDumpedOnly()
-			|| hasText(config.marketMaxCapital())
-			|| config.marketUseInventoryCoins()
-			|| hasText(config.marketMinTotalProfit())
-			|| hasText(config.marketMinGpPerHour())
-			|| hasText(config.marketMinConfidencePercent());
+		return FlipFinderConfigIO.getBoolean(configManager, "marketHideLowConfidence", false)
+			|| FlipFinderConfigIO.getBoolean(configManager, "marketDiscountOnly", false)
+			|| FlipFinderConfigIO.getBoolean(configManager, "marketDumpedOnly", false)
+			|| hasText(FlipFinderConfigIO.getString(configManager, "marketMaxCapital", ""))
+			|| FlipFinderConfigIO.getBoolean(configManager, "marketUseInventoryCoins", false)
+			|| hasText(FlipFinderConfigIO.getString(configManager, "marketMinTotalProfit", ""))
+			|| hasText(FlipFinderConfigIO.getString(configManager, "marketMinGpPerHour", ""))
+			|| hasText(FlipFinderConfigIO.getString(configManager, "marketMinConfidencePercent", ""));
 	}
 
 	String getEntitlementNotice()
@@ -209,10 +211,22 @@ class MarketFiltersPanel
 		}
 		membersCombo.setSelectedIndex(index);
 
-		hideLowConfidence.setSelected(Boolean.TRUE.equals(filters.getHideLowConfidence()));
-		discountOnly.setSelected(Boolean.TRUE.equals(filters.getDiscountOnly()));
-		dumpedOnly.setSelected(Boolean.TRUE.equals(filters.getDumpedOnly()));
-		maxCapitalField.setText(formatLong(filters.getMaxCapital()));
+		if (filters.getHideLowConfidence() != null)
+		{
+			hideLowConfidence.setSelected(filters.getHideLowConfidence());
+		}
+		if (filters.getDiscountOnly() != null)
+		{
+			discountOnly.setSelected(filters.getDiscountOnly());
+		}
+		if (filters.getDumpedOnly() != null)
+		{
+			dumpedOnly.setSelected(filters.getDumpedOnly());
+		}
+		if (filters.getMaxCapital() != null)
+		{
+			maxCapitalField.setText(formatLong(filters.getMaxCapital()));
+		}
 		useInventoryCoins.setSelected(false);
 		minTotalProfitField.setText(formatLong(filters.getMinTotalProfit()));
 		minGpPerHourField.setText(formatLong(filters.getMinGpPerHour()));
@@ -261,23 +275,22 @@ class MarketFiltersPanel
 		advancedBody.setLayout(new BoxLayout(advancedBody, BoxLayout.Y_AXIS));
 		PluginUi.transparent(advancedBody);
 		advancedBody.add(PluginUi.labeledField("Min total profit", minTotalProfitField));
-		advancedBody.add(PluginUi.gap(6));
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_SM));
 		advancedBody.add(PluginUi.labeledField("Min GP / hr", minGpPerHourField));
-		advancedBody.add(PluginUi.gap(6));
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_SM));
 		advancedBody.add(PluginUi.labeledField("Min confidence %", minConfidenceField));
-		minConfidenceField.setToolTipText("0–100, e.g. 55");
-		advancedBody.add(PluginUi.gap(8));
+		minConfidenceField.setToolTipText("0-100, e.g. 55");
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_MD));
 		advancedBody.add(PluginUi.caption("Quality"));
-		advancedBody.add(hideLowConfidence);
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_XS));
+		JPanel quality = PluginUi.checkboxGroup(hideLowConfidence, discountOnly, dumpedOnly);
 		hideLowConfidence.setToolTipText("Hides items below the engine low-confidence threshold.");
-		advancedBody.add(discountOnly);
 		discountOnly.setToolTipText("Passive est. buy is below the in-game GE guide price.");
-		advancedBody.add(dumpedOnly);
 		dumpedOnly.setToolTipText("Trading below 33% of GE guide and crashed under recent 1h norms.");
-		advancedBody.add(PluginUi.gap(6));
+		advancedBody.add(quality);
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_SM));
 		advancedBody.add(PluginUi.labeledField("Max capital", maxCapitalField));
-		advancedBody.add(PluginUi.gap(4));
-		advancedBody.add(useInventoryCoins);
+		advancedBody.add(PluginUi.nestedCheckbox(useInventoryCoins));
 	}
 
 	private void wireListeners()
@@ -310,11 +323,10 @@ class MarketFiltersPanel
 		minTotalProfitField.getDocument().addDocumentListener(textListener);
 		minGpPerHourField.getDocument().addDocumentListener(textListener);
 
-		javax.swing.event.ChangeListener toggleListener = e -> persistAndNotify();
-		hideLowConfidence.addChangeListener(toggleListener);
-		discountOnly.addChangeListener(toggleListener);
-		dumpedOnly.addChangeListener(toggleListener);
-		useInventoryCoins.addChangeListener(toggleListener);
+		hideLowConfidence.addActionListener(e -> persistAndNotify());
+		discountOnly.addActionListener(e -> persistAndNotify());
+		dumpedOnly.addActionListener(e -> persistAndNotify());
+		useInventoryCoins.addActionListener(e -> persistAndNotify());
 		membersCombo.addActionListener(e -> persistAndNotify());
 
 		maxCapitalField.addFocusListener(new FocusAdapter()
@@ -343,18 +355,28 @@ class MarketFiltersPanel
 	private void restoreFromConfig()
 	{
 		suppressEvents = true;
-		hideLowConfidence.setSelected(config.marketHideLowConfidence());
-		discountOnly.setSelected(config.marketDiscountOnly());
-		dumpedOnly.setSelected(config.marketDumpedOnly());
-		useInventoryCoins.setSelected(config.marketUseInventoryCoins());
-		maxCapitalField.setText(config.marketMaxCapital());
-		minNetProfitField.setText(config.marketMinNetProfit());
-		minRoiField.setText(config.marketMinRoiPercent());
-		minTotalProfitField.setText(config.marketMinTotalProfit());
-		minGpPerHourField.setText(config.marketMinGpPerHour());
-		minConfidenceField.setText(config.marketMinConfidencePercent());
+		hideLowConfidence.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "marketHideLowConfidence", false)
+		);
+		discountOnly.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "marketDiscountOnly", false)
+		);
+		dumpedOnly.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "marketDumpedOnly", false)
+		);
+		useInventoryCoins.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "marketUseInventoryCoins", false)
+		);
+		maxCapitalField.setText(FlipFinderConfigIO.getString(configManager, "marketMaxCapital", ""));
+		minNetProfitField.setText(FlipFinderConfigIO.getString(configManager, "marketMinNetProfit", ""));
+		minRoiField.setText(FlipFinderConfigIO.getString(configManager, "marketMinRoiPercent", ""));
+		minTotalProfitField.setText(FlipFinderConfigIO.getString(configManager, "marketMinTotalProfit", ""));
+		minGpPerHourField.setText(FlipFinderConfigIO.getString(configManager, "marketMinGpPerHour", ""));
+		minConfidenceField.setText(
+			FlipFinderConfigIO.getString(configManager, "marketMinConfidencePercent", "")
+		);
 
-		String members = config.marketMembersFilter();
+		String members = FlipFinderConfigIO.getString(configManager, "marketMembersFilter", "all");
 		int index = 0;
 		for (int i = 0; i < MEMBERS_VALUES.length; i++)
 		{

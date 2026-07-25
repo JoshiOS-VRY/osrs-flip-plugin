@@ -21,11 +21,13 @@ class SessionItemRow extends JPanel
 
 	SessionItemRow(ItemPerformanceRow item, ItemManager itemManager)
 	{
-		setLayout(new BorderLayout(6, 0));
+		setLayout(new BorderLayout(PluginUi.SPACING_SM, 0));
 		setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createMatteBorder(0, 3, 0, 0, profitAccent(item.getTotalProfit())),
-			BorderFactory.createEmptyBorder(5, 6, 5, 6)
+			BorderFactory.createEmptyBorder(
+				PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM, PluginUi.SPACING_SM
+			)
 		));
 		setAlignmentX(LEFT_ALIGNMENT);
 
@@ -46,17 +48,13 @@ class SessionItemRow extends JPanel
 		nameLabel.setToolTipText(name);
 
 		Color profitColor = item.getTotalProfit() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE;
-		JLabel stats = new JLabel(String.format(
-			"<html><span style='color:%s;'>%s</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#cccccc;'>%s</span>"
-				+ "<span style='color:#888888;'> · </span>"
-				+ "<span style='color:#888888;'>x %d</span></html>",
-			toHex(profitColor),
-			MarketFormat.signedGp(item.getTotalProfit()),
-			MarketFormat.percent(item.getAvgRoiPercent()),
-			item.getFlipCount()
-		));
+		JLabel stats = new JLabel("<html>"
+			+ PluginUi.htmlSpan(profitColor, MarketFormat.signedGp(item.getTotalProfit()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, MarketFormat.percent(item.getAvgRoiPercent()))
+			+ PluginUi.htmlSep()
+			+ PluginUi.htmlSpan(PluginUi.TEXT_DIM, "x " + item.getFlipCount())
+			+ "</html>");
 		stats.setFont(FontManager.getRunescapeSmallFont());
 
 		text.add(nameLabel);
@@ -104,8 +102,4 @@ class SessionItemRow extends JPanel
 		return ColorScheme.MEDIUM_GRAY_COLOR;
 	}
 
-	private static String toHex(Color color)
-	{
-		return String.format("#%06X", color.getRGB() & 0xFFFFFF);
-	}
 }

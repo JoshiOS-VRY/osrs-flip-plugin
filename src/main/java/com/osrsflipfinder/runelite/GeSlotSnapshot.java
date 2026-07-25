@@ -17,7 +17,7 @@ class GeSlotSnapshot
 			return new GeSlotSnapshot(slot, true);
 		}
 		GrandExchangeOfferState state = offer.getState();
-		// BOUGHT/SOLD slots still occupy the GE until collected — not empty.
+		// BOUGHT/SOLD slots still occupy the GE until collected - not empty.
 		boolean occupied = state == GrandExchangeOfferState.BUYING
 			|| state == GrandExchangeOfferState.SELLING
 			|| state == GrandExchangeOfferState.BOUGHT

@@ -28,5 +28,9 @@ public class MarketQueryResponse
 		private boolean stale;
 		private long refreshIntervalMs;
 		private String tier;
+		private Long publishedAtMs;
+		private Long nextPublishInMs;
+		private Long publishPeriodMs;
+		private double phaseConfidence;
 	}
 }

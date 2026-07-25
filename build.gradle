@@ -46,11 +46,17 @@ tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
 
-	jvmArgs "-ea",
-		"-Dflipx.baseUrl=http://localhost:3000",
-		"--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED",
-		"--add-opens=java.base/java.net=ALL-UNNAMED",
-		"--add-opens=java.base/java.io=ALL-UNNAMED"
+	def flipxBaseUrl = System.getProperty('flipx.baseUrl')
+	def runJvmArgs = [
+		'-ea',
+		'--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED',
+		'--add-opens=java.base/java.net=ALL-UNNAMED',
+		'--add-opens=java.base/java.io=ALL-UNNAMED',
+	]
+	if (flipxBaseUrl) {
+		runJvmArgs.add("-Dflipx.baseUrl=${flipxBaseUrl}")
+	}
+	jvmArgs runJvmArgs
 	args "--developer-mode", "--debug"
 }
 

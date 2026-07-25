@@ -13,7 +13,7 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 
-/** Reads the coin stack from the local inventory — no network access. */
+/** Reads the coin stack from the local inventory - no network access. */
 @Singleton
 class CoinBalanceService
 {

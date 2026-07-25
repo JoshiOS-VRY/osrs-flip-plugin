@@ -1,14 +1,14 @@
 package com.osrsflipfinder.runelite;
 
 /**
- * Production API endpoints for FlipX. End users never configure these — only
+ * Production API endpoints for FlipX. End users never configure these - only
  * developers may override {@link #BASE_URL_PROPERTY} when running locally.
  */
 public final class FlipXConstants
 {
 	static final String BASE_URL_PROPERTY = "flipx.baseUrl";
 
-	private static final String PRODUCTION_BASE_URL = "https://flipx.gg";
+	private static final String PRODUCTION_BASE_URL = "https://www.flipx.gg";
 
 	private FlipXConstants()
 	{
@@ -36,5 +36,16 @@ public final class FlipXConstants
 			trimmed = trimmed.substring(0, trimmed.length() - 1);
 		}
 		return trimmed.isEmpty() ? PRODUCTION_BASE_URL : trimmed;
+	}
+
+	/** Apex redirects to www on Vercel; treat both as the same API host. */
+	static String canonicalBaseUrl(String baseUrl)
+	{
+		String normalized = normalizeBaseUrl(baseUrl);
+		if ("https://flipx.gg".equals(normalized))
+		{
+			return PRODUCTION_BASE_URL;
+		}
+		return normalized;
 	}
 }

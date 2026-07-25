@@ -54,6 +54,17 @@ public interface FlipFinderConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "pairedBaseUrl",
+		name = "Paired API base URL",
+		description = "FlipX API host this device was paired against",
+		hidden = true
+	)
+	default String pairedBaseUrl()
+	{
+		return "";
+	}
+
+	@ConfigItem(
 		keyName = "enableMarketPanel",
 		name = "Enable Market panel",
 		description = "Show live flip opportunities from your account in the plugin's Market tab (requires pairing + Pro)",
@@ -372,19 +383,9 @@ public interface FlipFinderConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "enableStagnationOverlay",
-		name = "Enable slot stagnation timers",
-		description = "Show how long each GE slot has been inactive on the Grand Exchange interface"
-	)
-	default boolean enableStagnationOverlay()
-	{
-		return false;
-	}
-
-	@ConfigItem(
 		keyName = "tradeStagnationMinutes",
 		name = "Stagnation threshold (minutes)",
-		description = "Highlight slots inactive longer than this many minutes"
+		description = "Highlight inactive slots in the Flip manager sidebar after this many minutes"
 	)
 	default int tradeStagnationMinutes()
 	{

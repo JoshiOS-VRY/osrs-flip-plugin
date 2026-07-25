@@ -10,6 +10,15 @@ public class ItemDetailResponse
 	private FlipOpportunity opportunity;
 	private ItemDetailMeta meta;
 	private List<PriceSnapshot> snapshots;
+	private MarketRegimeSummary marketRegime;
+
+	@Data
+	public static class MarketRegimeSummary
+	{
+		private String state;
+		private String headline;
+		private String warning;
+	}
 
 	@Data
 	public static class ItemDetailMeta

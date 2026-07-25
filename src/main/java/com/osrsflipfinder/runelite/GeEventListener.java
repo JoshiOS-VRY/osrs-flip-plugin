@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -22,23 +25,38 @@ import net.runelite.client.game.ItemManager;
 public class GeEventListener
 {
 	private static final int GE_SLOT_COUNT = 8;
+	private static final int RECONCILE_DELAY_SECONDS = 5;
 
 	private final Client client;
 	private final ItemManager itemManager;
 	private final IngestClient ingestClient;
 	private final GeSlotTracker slotTracker;
+	private final ScheduledExecutorService executorService;
+	private final GeTradeHistoryBackfill tradeHistoryBackfill;
+
+	private volatile int reconcileGeneration = 0;
+	private volatile ScheduledFuture<?> pendingReconcile;
 
 	private final Map<Integer, OfferSnapshot> lastKnownBySlot = new HashMap<>();
 	private final Map<Integer, GrandExchangeOffer> pendingBySlot = new HashMap<>();
 	private final List<Runnable> offerChangeListeners = new CopyOnWriteArrayList<>();
 
 	@Inject
-	GeEventListener(Client client, ItemManager itemManager, IngestClient ingestClient, GeSlotTracker slotTracker)
+	GeEventListener(
+		Client client,
+		ItemManager itemManager,
+		IngestClient ingestClient,
+		GeSlotTracker slotTracker,
+		ScheduledExecutorService executorService,
+		GeTradeHistoryBackfill tradeHistoryBackfill
+	)
 	{
 		this.client = client;
 		this.itemManager = itemManager;
 		this.ingestClient = ingestClient;
 		this.slotTracker = slotTracker;
+		this.executorService = executorService;
+		this.tradeHistoryBackfill = tradeHistoryBackfill;
 	}
 
 	void addOfferChangeListener(Runnable listener)
@@ -94,12 +112,10 @@ public class GeEventListener
 		}
 
 		long accountHash = client.getAccountHash();
-		java.util.List<GeSlotSnapshot> snapshots = new java.util.ArrayList<>();
 
 		for (int slot = 0; slot < Math.min(GE_SLOT_COUNT, offers.length); slot++)
 		{
 			GrandExchangeOffer offer = offers[slot];
-			snapshots.add(GeSlotSnapshot.from(slot, offer));
 			if (offer != null)
 			{
 				processOffer(slot, offer, true);
@@ -121,10 +137,46 @@ public class GeEventListener
 			String displayName = client.getLocalPlayer() != null
 				? client.getLocalPlayer().getName()
 				: null;
-			ingestClient.reconcileSlots(String.valueOf(accountHash), displayName, snapshots);
+			scheduleDeferredReconcile(++reconcileGeneration, accountHash, displayName);
+			tradeHistoryBackfill.syncFromRuneliteProfileHistory();
 		}
 
 		notifyOfferChangeListeners();
+	}
+
+	private void scheduleDeferredReconcile(int generation, long accountHash, String displayName)
+	{
+		ScheduledFuture<?> pending = pendingReconcile;
+		if (pending != null)
+		{
+			pending.cancel(false);
+		}
+
+		pendingReconcile = executorService.schedule(() ->
+		{
+			if (generation != reconcileGeneration)
+			{
+				return;
+			}
+			if (client.getGameState() != GameState.LOGGED_IN)
+			{
+				return;
+			}
+
+			GrandExchangeOffer[] liveOffers = client.getGrandExchangeOffers();
+			if (liveOffers == null)
+			{
+				return;
+			}
+
+			java.util.List<GeSlotSnapshot> snapshots = new java.util.ArrayList<>();
+			for (int slot = 0; slot < Math.min(GE_SLOT_COUNT, liveOffers.length); slot++)
+			{
+				snapshots.add(GeSlotSnapshot.from(slot, liveOffers[slot]));
+			}
+
+			ingestClient.reconcileSlots(String.valueOf(accountHash), displayName, snapshots);
+		}, RECONCILE_DELAY_SECONDS, TimeUnit.SECONDS);
 	}
 
 	private void processOffer(int slot, GrandExchangeOffer offer, boolean forceEmit)

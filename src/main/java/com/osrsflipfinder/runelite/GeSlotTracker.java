@@ -11,7 +11,7 @@ import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 
 /**
- * Tracks per-slot GE activity timestamps for the My Slots panel and stagnation overlay.
+ * Tracks per-slot GE activity timestamps for the Flip manager panel.
  */
 @Singleton
 public class GeSlotTracker

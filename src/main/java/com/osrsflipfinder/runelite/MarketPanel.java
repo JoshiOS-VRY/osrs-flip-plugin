@@ -24,6 +24,8 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.util.LinkBrowser;
+import net.runelite.api.Client;
+import net.runelite.client.callback.ClientThread;
 
 /**
  * Market section embedded in the unified sidebar: opportunities, presets,
@@ -69,14 +71,12 @@ public class MarketPanel extends SidebarContentPanel
 	private Runnable scrollToTop = () -> {};
 	private Integer detailItemId;
 
-	private final JLabel foundLabel = new JLabel(PluginUi.PLACEHOLDER);
-	private final JLabel profitLabel = new JLabel(PluginUi.PLACEHOLDER);
-	private final JLabel roiLabel = new JLabel(PluginUi.PLACEHOLDER);
 	private final JLabel statusLabel = PluginUi.caption(" ");
+	private final JLabel refreshTimerLabel = PluginUi.caption(" ");
 	private final JLabel filterNoticeLabel = PluginUi.hint(" ");
 	private final JComboBox<String> presetCombo = new JComboBox<>(new DefaultComboBoxModel<>(PRESET_LABELS));
 	private final JComboBox<String> sortCombo = new JComboBox<>(new DefaultComboBoxModel<>(SORT_LABELS));
-	private final JCheckBox sortDescCheck = new JCheckBox("High to low", true);
+	private final JCheckBox sortDescCheck = PluginUi.checkBox("High to low", true);
 	private final JTextField searchField = PluginUi.textField("");
 	private final JPanel listContainer = PluginUi.listContainer();
 	private final MarketFiltersPanel filtersPanel;
@@ -89,6 +89,7 @@ public class MarketPanel extends SidebarContentPanel
 	private volatile boolean suppressPresetEvent = false;
 	private volatile boolean suppressSortEvent = false;
 	private String activeCard = CARD_LIST;
+	private String detailReturnCard = CARD_LIST;
 
 	@Inject
 	MarketPanel(
@@ -100,6 +101,8 @@ public class MarketPanel extends SidebarContentPanel
 		PluginApiClient apiClient,
 		ItemManager itemManager,
 		ItemsClient itemsClient,
+		Client client,
+		ClientThread clientThread,
 		ScheduledExecutorService executorService,
 		BookmarksClient bookmarksClient
 	)
@@ -115,7 +118,6 @@ public class MarketPanel extends SidebarContentPanel
 		this.bookmarksClient = bookmarksClient;
 
 		this.filtersPanel = new MarketFiltersPanel(
-			config,
 			configManager,
 			coinBalanceService,
 			this::onFiltersChanged
@@ -130,18 +132,27 @@ public class MarketPanel extends SidebarContentPanel
 			executorService
 		);
 
-		this.detailView = new ItemDetailView(itemManager, executorService, watchlistClient, this::showList, this::onError);
+		this.detailView = new ItemDetailView(
+			itemManager,
+			executorService,
+			watchlistClient,
+			this::onDetailBack,
+			this::onError
+		);
 		this.slotsPanel = new SlotOptimizerPanel(
 			apiClient,
 			opportunitiesClient,
 			bookmarksClient,
 			coinBalanceService,
 			itemManager,
+			client,
+			clientThread,
 			executorService,
 			config,
 			configManager,
 			this::showList,
-			this::onError
+			this::onError,
+			this::showDetailFromSlot
 		);
 		this.watchlistPanel = new WatchlistPanel(watchlistClient, itemManager, executorService, this::showList, this::onError);
 
@@ -164,6 +175,7 @@ public class MarketPanel extends SidebarContentPanel
 		coinBalanceService.setBalanceListener(coins -> onCoinBalanceChanged());
 
 		showList();
+		restorePersistedControls();
 	}
 
 	private void onCoinBalanceChanged()
@@ -183,7 +195,6 @@ public class MarketPanel extends SidebarContentPanel
 	private void styleSortCombo()
 	{
 		PluginUi.styleCombo(sortCombo);
-		sortDescCheck.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		sortDescCheck.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 	}
 
@@ -194,30 +205,12 @@ public class MarketPanel extends SidebarContentPanel
 		PluginUi.transparent(card);
 		card.setAlignmentX(LEFT_ALIGNMENT);
 
-		JPanel summary = PluginUi.summaryStrip(
-			PluginUi.statCell(foundLabel, "Found"),
-			PluginUi.statCell(profitLabel, "Top net"),
-			PluginUi.statCell(roiLabel, "Top ROI")
-		);
-		PluginUi.fullWidth(summary);
-		card.add(summary);
-		card.add(PluginUi.gap(10));
-
-		card.add(PluginUi.labeledField("Quick preset", presetCombo));
 		presetCombo.addActionListener(e -> onPresetChanged());
-		card.add(PluginUi.gap(8));
-
-		card.add(marketBookmarksBar);
-		card.add(PluginUi.gap(8));
 
 		sortCombo.setToolTipText("Sort the opportunity list (All preset only)");
 		sortCombo.addActionListener(e -> onSortChanged());
 		sortDescCheck.setToolTipText("Descending shows highest values first");
 		sortDescCheck.addActionListener(e -> onSortChanged());
-		card.add(PluginUi.labeledField("Sort by", sortCombo));
-		card.add(PluginUi.gap(4));
-		card.add(sortDescCheck);
-		card.add(PluginUi.gap(8));
 
 		searchField.getDocument().addDocumentListener(new DocumentListener()
 		{
@@ -240,24 +233,35 @@ public class MarketPanel extends SidebarContentPanel
 			}
 		});
 		searchField.setToolTipText("Filter by item name or ID");
-		card.add(PluginUi.labeledField("Search", searchField));
-		card.add(PluginUi.gap(8));
+
+		JPanel browse = PluginUi.verticalStack(
+			PluginUi.labeledField("Quick preset", presetCombo),
+			marketBookmarksBar,
+			PluginUi.labeledField("Sort by", sortCombo),
+			PluginUi.indented(sortDescCheck),
+			PluginUi.labeledField("Search", searchField)
+		);
+		card.add(PluginUi.formCard(browse));
+		card.add(PluginUi.gap(PluginUi.SPACING_MD));
+
 		card.add(filtersPanel.wrapper());
-		card.add(PluginUi.gap(4));
 		filterNoticeLabel.setVisible(false);
 		card.add(filterNoticeLabel);
-		card.add(PluginUi.gap(6));
+		card.add(PluginUi.gap(PluginUi.SPACING_MD));
 
-		JButton slotsButton = PluginUi.secondaryButton("Slot optimizer");
+		card.add(statusLabel);
+		refreshTimerLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		card.add(refreshTimerLabel);
+		card.add(PluginUi.gap(PluginUi.SPACING_XS));
+
+		JButton slotsButton = PluginUi.linkButton("Slot optimizer");
 		slotsButton.addActionListener(e -> showSlots());
-		JButton watchlistButton = PluginUi.secondaryButton("Watchlist");
+		JButton watchlistButton = PluginUi.linkButton("Watchlist");
 		watchlistButton.addActionListener(e -> showWatchlist());
 		JPanel nav = PluginUi.buttonRow(slotsButton, watchlistButton);
 		PluginUi.fullWidth(nav);
 		card.add(nav);
-		card.add(PluginUi.gap(8));
-		card.add(statusLabel);
-		card.add(PluginUi.gap(8));
+		card.add(PluginUi.gap(PluginUi.SPACING_SM));
 		card.add(listContainer);
 		SidebarContentPanel.lockWidth(card);
 
@@ -271,7 +275,83 @@ public class MarketPanel extends SidebarContentPanel
 
 	void setActive(boolean active)
 	{
-		opportunitiesClient.setActive(active && config.enableMarketPanel() && !config.apiKey().isBlank());
+		opportunitiesClient.setActive(
+			active && config.enableMarketPanel() && PairingCredentials.isPairedForCurrentApi(config));
+	}
+
+	void updateRefreshTimer(boolean paired)
+	{
+		String marketTimer = formatMarketRefreshTimer(paired);
+		refreshTimerLabel.setText(marketTimer);
+		slotsPanel.updateMarketRefreshTimer(marketTimer);
+		watchlistPanel.updateMarketRefreshTimer(marketTimer);
+		if (CARD_DETAIL.equals(activeCard))
+		{
+			detailView.updateRefreshStatus(marketTimer, readDetailLastUpdatedMs());
+		}
+	}
+
+	private String formatMarketRefreshTimer(boolean paired)
+	{
+		if (!config.enableMarketPanel() || !paired)
+		{
+			return " ";
+		}
+		return RefreshCountdown.formatPolling(
+			opportunitiesClient.getNextRefreshAtMs(),
+			opportunitiesClient.isActive(),
+			opportunitiesClient.isFetchInProgress()
+		);
+	}
+
+	private long readDetailLastUpdatedMs()
+	{
+		if (detailItemId == null)
+		{
+			return 0L;
+		}
+		ItemDetailResponse detail = itemsClient.peek(detailItemId);
+		if (detail != null && detail.getMeta() != null && detail.getMeta().getLastUpdatedMs() > 0)
+		{
+			return detail.getMeta().getLastUpdatedMs();
+		}
+		MarketQueryResponse latest = opportunitiesClient.getLatest();
+		if (latest != null && latest.getMeta() != null)
+		{
+			return latest.getMeta().getLastUpdatedMs();
+		}
+		return 0L;
+	}
+
+	private void syncDetailRefreshUi()
+	{
+		if (!CARD_DETAIL.equals(activeCard))
+		{
+			return;
+		}
+		boolean paired = PairingCredentials.isPairedForCurrentApi(config);
+		String marketTimer = formatMarketRefreshTimer(paired);
+		detailView.updateRefreshStatus(marketTimer, readDetailLastUpdatedMs());
+	}
+
+	private void scheduleDetailItemFetch()
+	{
+		if (!CARD_DETAIL.equals(activeCard) || detailItemId == null)
+		{
+			return;
+		}
+		int itemId = detailItemId;
+		executorService.execute(() ->
+		{
+			try
+			{
+				itemsClient.fetch(itemId);
+			}
+			catch (IOException ex)
+			{
+				log.debug("Item detail poll refresh failed for {}", itemId, ex);
+			}
+		});
 	}
 
 	void refreshUi()
@@ -279,13 +359,12 @@ public class MarketPanel extends SidebarContentPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			filtersPanel.refreshCoinsLabel();
-			PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
-			filtersPanel.setAdvancedEnabled(entitlements != null && entitlements.isAdvancedFilters());
+			applyMarketEntitlements(opportunitiesClient.getEntitlements());
 
-			restorePersistedControls();
+			updateSortControlsEnabled();
 			updateFilterNotice();
 
-			if (config.apiKey().isBlank())
+			if (!PairingCredentials.isPairedForCurrentApi(config))
 			{
 				statusLabel.setText("Pair in Connection to browse the market.");
 				clearMarketList();
@@ -302,7 +381,7 @@ public class MarketPanel extends SidebarContentPanel
 				{
 					renderData(latest);
 				}
-				statusLabel.setText("Offline · cached "
+				statusLabel.setText("Offline | cached "
 					+ LocalCacheStore.formatCachedAt(opportunitiesClient.getCachedAt()));
 			}
 			else
@@ -316,7 +395,7 @@ public class MarketPanel extends SidebarContentPanel
 	private void restorePersistedControls()
 	{
 		suppressPresetEvent = true;
-		String presetId = config.marketPresetId();
+		String presetId = FlipFinderConfigIO.getString(configManager, "marketPresetId", "all");
 		int index = 0;
 		for (int i = 0; i < PRESET_IDS.length; i++)
 		{
@@ -330,7 +409,7 @@ public class MarketPanel extends SidebarContentPanel
 		suppressPresetEvent = false;
 
 		suppressSortEvent = true;
-		String sortId = config.marketSortId();
+		String sortId = FlipFinderConfigIO.getString(configManager, "marketSortId", "score");
 		int sortIndex = 0;
 		for (int i = 0; i < SORT_IDS.length; i++)
 		{
@@ -341,10 +420,21 @@ public class MarketPanel extends SidebarContentPanel
 			}
 		}
 		sortCombo.setSelectedIndex(sortIndex);
-		sortDescCheck.setSelected(config.marketSortDesc());
+		sortDescCheck.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "marketSortDesc", true)
+		);
 		suppressSortEvent = false;
 
 		updateSortControlsEnabled();
+	}
+
+	private void applyMarketEntitlements(PluginEntitlements entitlements)
+	{
+		if (entitlements == null)
+		{
+			return;
+		}
+		filtersPanel.setAdvancedEnabled(entitlements.isAdvancedFilters());
 	}
 
 	private void updateSortControlsEnabled()
@@ -432,6 +522,7 @@ public class MarketPanel extends SidebarContentPanel
 	private void onFiltersChanged()
 	{
 		filtersPanel.refreshCoinsLabel();
+		marketBookmarksBar.setActiveBookmarkId(null);
 		selectPresetSilently(0);
 		updateSortControlsEnabled();
 		requestMarketRefresh();
@@ -446,10 +537,7 @@ public class MarketPanel extends SidebarContentPanel
 
 	private void showLoadingState()
 	{
-		foundLabel.setText(PluginUi.PLACEHOLDER);
-		profitLabel.setText(PluginUi.PLACEHOLDER);
-		roiLabel.setText(PluginUi.PLACEHOLDER);
-		statusLabel.setText("Updating market…");
+		statusLabel.setText("Updating market...");
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		clearMarketList();
 	}
@@ -497,7 +585,7 @@ public class MarketPanel extends SidebarContentPanel
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			filtersPanel.setAdvancedEnabled(entitlements.isAdvancedFilters());
+			applyMarketEntitlements(entitlements);
 			slotsPanel.refreshEntitlements();
 			slotsPanel.invalidateCache();
 			if (CARD_SLOTS.equals(activeCard))
@@ -614,36 +702,24 @@ public class MarketPanel extends SidebarContentPanel
 
 	private void renderData(MarketQueryResponse response)
 	{
-		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
-		filtersPanel.setAdvancedEnabled(entitlements != null && entitlements.isAdvancedFilters());
 		updateFilterNotice();
-
-		MarketQueryResponse.Summary summary = response.getSummary();
-		if (summary != null)
-		{
-			foundLabel.setText(String.valueOf(summary.getOpportunitiesFound()));
-			profitLabel.setText(MarketFormat.gp(summary.getHighestNetProfit()));
-			roiLabel.setText(MarketFormat.percent(summary.getHighestRoiPercent()));
-		}
 
 		listContainer.removeAll();
 		List<FlipOpportunity> opportunities = response.getOpportunities();
+		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		if (opportunities == null || opportunities.isEmpty())
 		{
-			statusLabel.setText("No opportunities match your filters.");
+			statusLabel.setText("No matches");
+			listContainer.add(PluginUi.emptyState(
+				"No opportunities match your filters. Widen filters or try another preset."));
 		}
 		else
 		{
 			statusLabel.setText(buildResultStatus(opportunities.size(), response));
-		}
-		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-
-		if (opportunities != null)
-		{
 			for (FlipOpportunity opp : opportunities)
 			{
 				listContainer.add(new OpportunityRow(opp, itemManager, () -> showDetail(opp)));
-				listContainer.add(PluginUi.gap(4));
+				listContainer.add(PluginUi.gap(PluginUi.SPACING_XS));
 			}
 		}
 		listContainer.revalidate();
@@ -667,6 +743,8 @@ public class MarketPanel extends SidebarContentPanel
 					}
 				}
 			}
+			syncDetailRefreshUi();
+			scheduleDetailItemFetch();
 		}
 
 		if (CARD_SLOTS.equals(activeCard))
@@ -681,11 +759,11 @@ public class MarketPanel extends SidebarContentPanel
 		status.append(shown).append(" shown");
 		if (response.getMeta() != null && response.getMeta().isStale())
 		{
-			status.append(" · stale data");
+			status.append(" | stale data");
 		}
 		if (opportunitiesClient.isOffline() && opportunitiesClient.getCachedAt() != null)
 		{
-			status.append(" · offline cached ");
+			status.append(" | offline cached ");
 			status.append(LocalCacheStore.formatCachedAt(opportunitiesClient.getCachedAt()));
 		}
 		return status.toString();
@@ -714,24 +792,49 @@ public class MarketPanel extends SidebarContentPanel
 	{
 		activeCard = CARD_LIST;
 		detailItemId = null;
+		detailReturnCard = CARD_LIST;
 		cardStack.showCard(listCard);
 		refreshCardLayout();
 	}
 
+	private void onDetailBack()
+	{
+		if (CARD_SLOTS.equals(detailReturnCard))
+		{
+			detailReturnCard = CARD_LIST;
+			showSlots();
+			return;
+		}
+		showList();
+	}
+
+	private void showDetailFromSlot(SlotRecommendation slot)
+	{
+		showDetail(toOpportunity(slot), CARD_SLOTS);
+	}
+
 	private void showDetail(FlipOpportunity opp)
 	{
+		showDetail(opp, CARD_LIST);
+	}
+
+	private void showDetail(FlipOpportunity opp, String returnCard)
+	{
 		activeCard = CARD_DETAIL;
+		detailReturnCard = returnCard;
 		detailItemId = opp.getId();
 
 		cardStack.showCard(detailView);
 		scrollToTop.run();
 		detailView.showLoading(opp, FlipXConstants.baseUrl());
+		syncDetailRefreshUi();
 		refreshCardLayout();
 
 		SwingUtilities.invokeLater(() ->
 		{
 			FlipOpportunity unified = itemsClient.peekOpportunity(opp.getId());
 			detailView.show(unified != null ? unified : opp, FlipXConstants.baseUrl());
+			syncDetailRefreshUi();
 			refreshCardLayout();
 		});
 
@@ -748,6 +851,25 @@ public class MarketPanel extends SidebarContentPanel
 		});
 	}
 
+	private static FlipOpportunity toOpportunity(SlotRecommendation slot)
+	{
+		FlipOpportunity opp = new FlipOpportunity();
+		opp.setId(slot.getItemId());
+		opp.setName(slot.getItemName());
+		opp.setBuyLimit(slot.getBuyLimit());
+		opp.setEstimatedBuyPrice(slot.getEstimatedBuyPrice());
+		opp.setEstimatedSellPrice(slot.getEstimatedSellPrice());
+		opp.setNetProfitPerItem(slot.getNetProfitPerItem());
+		opp.setNetRoiPercent(slot.getNetRoiPercent());
+		opp.setOpportunityScore(slot.getOpportunityScore());
+		opp.setEstimatedProfitAtQuantity(slot.getEstimatedProfitAtQuantity());
+		opp.setEstimatedProfitPerHour(Math.round(slot.getProfitPerSlotHour()));
+		opp.setEstimatedCapitalRequired(slot.getCapitalRequired());
+		opp.setEstimatedTurnoverHours(slot.getTurnoverHours());
+		opp.setEstimatedTradableQuantity(slot.getEstimatedTradableQuantity());
+		return opp;
+	}
+
 	private void onItemUpdated(int itemId)
 	{
 		if (detailItemId == null || detailItemId != itemId || !CARD_DETAIL.equals(activeCard))
@@ -757,7 +879,11 @@ public class MarketPanel extends SidebarContentPanel
 		FlipOpportunity unified = itemsClient.peekOpportunity(itemId);
 		if (unified != null)
 		{
-			SwingUtilities.invokeLater(() -> detailView.show(unified, FlipXConstants.baseUrl()));
+			SwingUtilities.invokeLater(() ->
+			{
+				detailView.show(unified, FlipXConstants.baseUrl());
+				syncDetailRefreshUi();
+			});
 		}
 	}
 

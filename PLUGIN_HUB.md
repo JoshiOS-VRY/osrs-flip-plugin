@@ -4,9 +4,9 @@ This document is the checklist for listing FlipX in the [official RuneLite Plugi
 
 ## Prerequisites
 
-- [ ] **Public GitHub repository** — Plugin Hub only accepts public repos.
-- [ ] **Production API live** — Default base URL is `https://flipx.gg`. DNS must resolve before reviewers or users can pair in production.
-- [ ] **Privacy policy** — Published at [https://flipx.gg/privacy](https://flipx.gg/privacy) (covers plugin data collection).
+- [x] **Public GitHub repository** — Plugin Hub only accepts public repos. `JoshiOS-VRY/osrs-flip-plugin` is public.
+- [ ] **Production API live** — Default base URL is `https://www.flipx.gg` (the apex `flipx.gg` is normalized to `www` by the plugin). DNS must resolve before reviewers or users can pair in production.
+- [ ] **Privacy policy** — Published at [https://www.flipx.gg/privacy](https://www.flipx.gg/privacy) (covers plugin data collection).
 - [ ] **CI green** — `./gradlew test shadowJar` passes on `main`/`master`.
 
 ## Repository checklist (already done in this repo)
@@ -68,7 +68,7 @@ Replace:
 Example:
 
 ```
-repository=https://github.com/flipx-gg/osrs-flip-plugin.git
+repository=https://github.com/JoshiOS-VRY/osrs-flip-plugin.git
 commit=abc123def4567890abc123def4567890abc123de
 ```
 

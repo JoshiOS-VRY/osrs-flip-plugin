@@ -73,7 +73,7 @@ public class GeChartOverlay extends Overlay
 		{
 			maybeFetch(itemId);
 			graphics.setColor(Color.WHITE);
-			graphics.drawString("Loading chart…", 10, 20);
+			graphics.drawString("Loading chart...", 10, 20);
 			return new Dimension(140, 60);
 		}
 

@@ -8,6 +8,8 @@ import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -54,9 +56,6 @@ public class OsrsFlipFinderPlugin extends Plugin
 	private MarketCopilotOverlay marketCopilotOverlay;
 
 	@Inject
-	private GeStagnationOverlay geStagnationOverlay;
-
-	@Inject
 	private GeChartOverlay geChartOverlay;
 
 	@Inject
@@ -81,12 +80,12 @@ public class OsrsFlipFinderPlugin extends Plugin
 		eventBus.register(geEventListener);
 		eventBus.register(coinBalanceService);
 		eventBus.register(geInterfaceListener);
+		eventBus.register(this);
 		ingestClient.start();
 		opportunitiesClient.start();
 		portfolioClient.start();
 		coinBalanceService.start();
 		overlayManager.add(marketCopilotOverlay);
-		overlayManager.add(geStagnationOverlay);
 		overlayManager.add(geChartOverlay);
 		overlayManager.add(geWatchlistHintOverlay);
 
@@ -116,12 +115,12 @@ public class OsrsFlipFinderPlugin extends Plugin
 		opportunitiesClient.shutdown();
 		portfolioClient.shutdown();
 		overlayManager.remove(marketCopilotOverlay);
-		overlayManager.remove(geStagnationOverlay);
 		overlayManager.remove(geChartOverlay);
 		overlayManager.remove(geWatchlistHintOverlay);
 		eventBus.unregister(geEventListener);
 		eventBus.unregister(coinBalanceService);
 		eventBus.unregister(geInterfaceListener);
+		eventBus.unregister(this);
 		clientToolbar.removeNavigation(navButton);
 		log.debug("FlipX plugin stopped");
 	}
@@ -130,6 +129,36 @@ public class OsrsFlipFinderPlugin extends Plugin
 	FlipFinderConfig provideConfig(ConfigManager configManager)
 	{
 		return configManager.getConfig(FlipFinderConfig.class);
+	}
+
+	@Subscribe
+	void onConfigChanged(ConfigChanged event)
+	{
+		if (!FlipFinderConfig.GROUP.equals(event.getGroup()))
+		{
+			return;
+		}
+		String key = event.getKey();
+		if (key == null)
+		{
+			panel.refreshUi();
+			return;
+		}
+		switch (key)
+		{
+			case "enableUpload":
+			case "enableMarketPanel":
+			case "enableGeOverlay":
+			case "enableGeChartOverlay":
+			case "enableWatchlistGeHint":
+			case "apiKey":
+			case "pairedAt":
+			case "pairedBaseUrl":
+				panel.refreshUi();
+				break;
+			default:
+				break;
+		}
 	}
 
 	private void ensureDeviceId()

@@ -1,7 +1,7 @@
 package com.osrsflipfinder.runelite;
 
-import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -27,6 +27,7 @@ class ItemDetailView extends SidebarContentPanel
 	private final JLabel iconLabel = new JLabel();
 	private final JLabel nameLabel = new JLabel();
 	private final JLabel loadingLabel = PluginUi.loadingCaption(" ");
+	private final JLabel refreshTimerLabel = PluginUi.caption(" ");
 	private final JLabel foundLabel = new JLabel(PluginUi.PLACEHOLDER);
 	private final JLabel roiLabel = new JLabel(PluginUi.PLACEHOLDER);
 	private final JLabel gpHrLabel = new JLabel(PluginUi.PLACEHOLDER);
@@ -57,20 +58,27 @@ class ItemDetailView extends SidebarContentPanel
 		setAlignmentX(LEFT_ALIGNMENT);
 
 		add(PluginUi.backButton(onBack));
-		add(PluginUi.gap(4));
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+		refreshTimerLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		refreshTimerLabel.setAlignmentX(LEFT_ALIGNMENT);
+		SidebarContentPanel.lockWidth(refreshTimerLabel);
+		add(refreshTimerLabel);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
 		add(loadingLabel);
-		add(PluginUi.gap(4));
+		add(PluginUi.gap(PluginUi.SPACING_XS));
 
-		JPanel headerRow = PluginUi.card();
-		headerRow.setLayout(new BorderLayout(8, 0));
+		JPanel headerCard = PluginUi.card();
+		headerCard.setLayout(new BoxLayout(headerCard, BoxLayout.Y_AXIS));
 		iconLabel.setPreferredSize(new Dimension(32, 28));
+		iconLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
-		headerRow.add(iconLabel, BorderLayout.WEST);
-		headerRow.add(nameLabel, BorderLayout.CENTER);
-		PluginUi.lockRowHeight(headerRow, 36);
-		add(headerRow);
-		add(PluginUi.gap(6));
+		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		headerCard.add(iconLabel);
+		headerCard.add(PluginUi.gap(PluginUi.SPACING_XS));
+		headerCard.add(nameLabel);
+		add(headerCard);
+		add(PluginUi.gap(PluginUi.SPACING_SM));
 
 		JPanel hero = PluginUi.detailHeroGrid(
 			PluginUi.statCell(foundLabel, "Net / item"),
@@ -79,9 +87,9 @@ class ItemDetailView extends SidebarContentPanel
 			PluginUi.statCell(capitalLabel, "Capital")
 		);
 		add(hero);
-		add(PluginUi.gap(6));
+		add(PluginUi.gap(PluginUi.SPACING_SM));
 		add(statsPanel);
-		add(PluginUi.gap(8));
+		add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		watchButton.addActionListener(e -> addToWatchlist());
 		openButton.addActionListener(e -> openInWeb());
@@ -92,23 +100,29 @@ class ItemDetailView extends SidebarContentPanel
 	}
 
 	/** Lightweight skeleton shown immediately when navigating from the list. */
+	void updateRefreshStatus(String pollingLine, long lastUpdatedMs)
+	{
+		String updated = lastUpdatedMs > 0
+			? "Updated " + MarketFormat.updatedClock(lastUpdatedMs)
+			: null;
+		refreshTimerLabel.setText(RefreshCountdown.combine(pollingLine, updated));
+	}
+
 	void showLoading(FlipOpportunity opp, String baseUrl)
 	{
 		this.current = opp;
 		this.baseUrl = baseUrl;
 		this.loadingItemId = opp.getId();
 
-		loadingLabel.setText("Loading prices…");
+		loadingLabel.setText("Loading prices...");
 		loadingLabel.setVisible(true);
 		iconLabel.setIcon(null);
-		nameLabel.setText(opp.getName().length() > 24 ? opp.getName().substring(0, 23) + "…" : opp.getName());
-		nameLabel.setToolTipText(opp.getName());
+		setItemName(opp.getName());
 
-		foundLabel.setText(PluginUi.PLACEHOLDER);
-		foundLabel.setForeground(Color.WHITE);
-		roiLabel.setText(PluginUi.PLACEHOLDER);
-		gpHrLabel.setText(PluginUi.PLACEHOLDER);
-		capitalLabel.setText(PluginUi.PLACEHOLDER);
+		PluginUi.setHeroGridStatValue(foundLabel, PluginUi.PLACEHOLDER, null);
+		PluginUi.setHeroGridStatValue(roiLabel, PluginUi.PLACEHOLDER, null);
+		PluginUi.setHeroGridStatValue(gpHrLabel, PluginUi.PLACEHOLDER, null);
+		PluginUi.setHeroGridStatValue(capitalLabel, PluginUi.PLACEHOLDER, null);
 
 		statsPanel.removeAll();
 		PluginUi.addStatLine(statsPanel, "Est. buy", PluginUi.PLACEHOLDER);
@@ -151,14 +165,36 @@ class ItemDetailView extends SidebarContentPanel
 
 	private void populateText(FlipOpportunity opp)
 	{
-		nameLabel.setText(opp.getName().length() > 24 ? opp.getName().substring(0, 23) + "…" : opp.getName());
-		nameLabel.setToolTipText(opp.getName());
+		setItemName(opp.getName());
 
-		foundLabel.setText(MarketFormat.signedGp(opp.getNetProfitPerItem()));
-		foundLabel.setForeground(opp.getNetProfitPerItem() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE);
-		roiLabel.setText(MarketFormat.percent(opp.getNetRoiPercent()));
-		gpHrLabel.setText(MarketFormat.gp(opp.getEstimatedProfitPerHour()));
-		capitalLabel.setText(MarketFormat.gp(opp.getEstimatedCapitalRequired()));
+		long net = opp.getNetProfitPerItem();
+		PluginUi.setHeroGridStatValue(
+			foundLabel,
+			MarketFormat.gpCompactSigned(net),
+			MarketFormat.signedGp(net)
+		);
+		foundLabel.setForeground(net >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE);
+
+		double roi = opp.getNetRoiPercent();
+		PluginUi.setHeroGridStatValue(
+			roiLabel,
+			MarketFormat.percent(roi),
+			MarketFormat.percent(roi)
+		);
+
+		long gpHr = opp.getEstimatedProfitPerHour();
+		PluginUi.setHeroGridStatValue(
+			gpHrLabel,
+			MarketFormat.gpCompact(gpHr),
+			MarketFormat.gp(gpHr)
+		);
+
+		long capital = opp.getEstimatedCapitalRequired();
+		PluginUi.setHeroGridStatValue(
+			capitalLabel,
+			MarketFormat.gpCompact(capital),
+			MarketFormat.gp(capital)
+		);
 
 		statsPanel.removeAll();
 		PluginUi.addStatLine(statsPanel, "Est. buy", MarketFormat.gp(opp.getEstimatedBuyPrice()));
@@ -178,6 +214,24 @@ class ItemDetailView extends SidebarContentPanel
 		statsPanel.repaint();
 		revalidate();
 		repaint();
+	}
+
+	private void setItemName(String name)
+	{
+		String safe = name != null ? name : "Item";
+		int wrap = PluginUi.cardBodyWrapWidth();
+		nameLabel.setText(
+			"<html><div style='width:" + wrap + "px;'>" + escapeHtml(safe) + "</div></html>"
+		);
+		nameLabel.setToolTipText(safe.length() > 40 ? safe : null);
+	}
+
+	private static String escapeHtml(String text)
+	{
+		return text
+			.replace("&", "&amp;")
+			.replace("<", "&lt;")
+			.replace(">", "&gt;");
 	}
 
 	private void addToWatchlist()

@@ -22,4 +22,9 @@ public class CopilotItem
 	private String repriceHint;
 	private String priceIssue;
 	private Double deltaPercent;
+	/** {@code strong}, {@code ok}, {@code weak}, or {@code avoid} - from local guidance. */
+	private String verdict;
+	private String actionSummary;
+	private String riskRegimeState;
+	private String riskWarning;
 }

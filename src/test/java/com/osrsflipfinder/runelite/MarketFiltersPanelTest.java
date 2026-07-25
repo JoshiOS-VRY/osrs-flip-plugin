@@ -1,34 +1,43 @@
 package com.osrsflipfinder.runelite;
 
+import java.util.HashMap;
+import java.util.Map;
+import net.runelite.client.config.ConfigManager;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class MarketFiltersPanelTest
 {
+	/** Panel state is restored from persisted config keys, not the config proxy. */
+	private static ConfigManager configManagerWith(Map<String, String> saved)
+	{
+		ConfigManager configManager = mock(ConfigManager.class);
+		when(configManager.getConfiguration(eq(FlipFinderConfig.GROUP), anyString()))
+			.thenAnswer(invocation -> saved.get(invocation.<String>getArgument(1)));
+		return configManager;
+	}
+
+	private static Map<String, String> savedQualityFilters()
+	{
+		Map<String, String> saved = new HashMap<>();
+		saved.put("marketHideLowConfidence", "true");
+		saved.put("marketDiscountOnly", "true");
+		saved.put("marketMembersFilter", "all");
+		return saved;
+	}
+
 	@Test
 	public void buildFiltersOmitsQualityFiltersWithoutPro()
 	{
-		FlipFinderConfig config = mock(FlipFinderConfig.class);
-		when(config.marketHideLowConfidence()).thenReturn(true);
-		when(config.marketDiscountOnly()).thenReturn(true);
-		when(config.marketDumpedOnly()).thenReturn(false);
-		when(config.marketUseInventoryCoins()).thenReturn(false);
-		when(config.marketMaxCapital()).thenReturn("");
-		when(config.marketMinNetProfit()).thenReturn("");
-		when(config.marketMinRoiPercent()).thenReturn("");
-		when(config.marketMinTotalProfit()).thenReturn("");
-		when(config.marketMinGpPerHour()).thenReturn("");
-		when(config.marketMinConfidencePercent()).thenReturn("");
-		when(config.marketMembersFilter()).thenReturn("all");
-
 		MarketFiltersPanel panel = new MarketFiltersPanel(
-			config,
-			mock(net.runelite.client.config.ConfigManager.class),
+			configManagerWith(savedQualityFilters()),
 			mock(CoinBalanceService.class),
 			() -> {}
 		);
@@ -46,22 +55,8 @@ public class MarketFiltersPanelTest
 	@Test
 	public void buildFiltersIncludesQualityFiltersWithPro()
 	{
-		FlipFinderConfig config = mock(FlipFinderConfig.class);
-		when(config.marketHideLowConfidence()).thenReturn(true);
-		when(config.marketDiscountOnly()).thenReturn(false);
-		when(config.marketDumpedOnly()).thenReturn(false);
-		when(config.marketUseInventoryCoins()).thenReturn(false);
-		when(config.marketMaxCapital()).thenReturn("");
-		when(config.marketMinNetProfit()).thenReturn("");
-		when(config.marketMinRoiPercent()).thenReturn("");
-		when(config.marketMinTotalProfit()).thenReturn("");
-		when(config.marketMinGpPerHour()).thenReturn("");
-		when(config.marketMinConfidencePercent()).thenReturn("");
-		when(config.marketMembersFilter()).thenReturn("all");
-
 		MarketFiltersPanel panel = new MarketFiltersPanel(
-			config,
-			mock(net.runelite.client.config.ConfigManager.class),
+			configManagerWith(savedQualityFilters()),
 			mock(CoinBalanceService.class),
 			() -> {}
 		);
@@ -69,6 +64,7 @@ public class MarketFiltersPanelTest
 
 		MarketQueryRequest.MarketFilters filters = panel.buildFilters();
 		assertTrue(filters.getHideLowConfidence());
+		assertTrue(filters.getDiscountOnly());
 		assertFalse(panel.hasIgnoredAdvancedFilters());
 		assertNull(panel.getEntitlementNotice());
 	}

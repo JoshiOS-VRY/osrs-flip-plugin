@@ -54,21 +54,24 @@ class SlotOptimizerFiltersPanel
 		buildAdvancedBody();
 		wireListeners();
 		restoreFromConfig();
+		advancedBody.setVisible(false);
+		advancedHint.setVisible(true);
 	}
 
 	JPanel wrapper()
 	{
 		if (section == null)
 		{
-			JPanel body = new JPanel();
+			JPanel coreFilters = PluginUi.verticalStack(
+				PluginUi.labeledField("Min net / item", minNetProfitField),
+				PluginUi.labeledField("Min ROI %", minRoiField),
+				PluginUi.labeledField("Members", membersCombo)
+			);
+			JPanel body = new SidebarContentPanel();
 			body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 			PluginUi.transparent(body);
-			body.add(PluginUi.labeledField("Min net / item", minNetProfitField));
-			body.add(PluginUi.gap(6));
-			body.add(PluginUi.labeledField("Min ROI %", minRoiField));
-			body.add(PluginUi.gap(6));
-			body.add(PluginUi.labeledField("Members", membersCombo));
-			body.add(PluginUi.gap(8));
+			body.add(coreFilters);
+			body.add(PluginUi.gap(PluginUi.SPACING_MD));
 			body.add(advancedBody);
 			body.add(advancedHint);
 			section = PluginUi.collapsibleSection("Filters", body, false);
@@ -79,12 +82,14 @@ class SlotOptimizerFiltersPanel
 	void setAdvancedEnabled(boolean enabled)
 	{
 		advancedEnabled = enabled;
-		advancedBody.setVisible(enabled);
-		advancedHint.setVisible(!enabled);
+		boolean showAdvanced = enabled || hasIgnoredAdvancedFilters();
+		advancedBody.setVisible(showAdvanced);
+		advancedHint.setVisible(!showAdvanced);
 
-		hideLowConfidence.setEnabled(enabled);
-		discountOnly.setEnabled(enabled);
-		dumpedOnly.setEnabled(enabled);
+		hideLowConfidence.setEnabled(showAdvanced);
+		discountOnly.setEnabled(showAdvanced);
+		dumpedOnly.setEnabled(showAdvanced);
+
 		minTotalProfitField.setEnabled(enabled);
 		minGpPerHourField.setEnabled(enabled);
 		minConfidenceField.setEnabled(enabled);
@@ -96,12 +101,12 @@ class SlotOptimizerFiltersPanel
 		{
 			return false;
 		}
-		return config.slotOptHideLowConfidence()
-			|| config.slotOptDiscountOnly()
-			|| config.slotOptDumpedOnly()
-			|| hasText(config.slotOptMinTotalProfit())
-			|| hasText(config.slotOptMinGpPerHour())
-			|| hasText(config.slotOptMinConfidencePercent());
+		return FlipFinderConfigIO.getBoolean(configManager, "slotOptHideLowConfidence", false)
+			|| FlipFinderConfigIO.getBoolean(configManager, "slotOptDiscountOnly", false)
+			|| FlipFinderConfigIO.getBoolean(configManager, "slotOptDumpedOnly", false)
+			|| hasText(FlipFinderConfigIO.getString(configManager, "slotOptMinTotalProfit", ""))
+			|| hasText(FlipFinderConfigIO.getString(configManager, "slotOptMinGpPerHour", ""))
+			|| hasText(FlipFinderConfigIO.getString(configManager, "slotOptMinConfidencePercent", ""));
 	}
 
 	String getEntitlementNotice()
@@ -161,9 +166,18 @@ class SlotOptimizerFiltersPanel
 		}
 		membersCombo.setSelectedIndex(index);
 
-		hideLowConfidence.setSelected(Boolean.TRUE.equals(filters.getHideLowConfidence()));
-		discountOnly.setSelected(Boolean.TRUE.equals(filters.getDiscountOnly()));
-		dumpedOnly.setSelected(Boolean.TRUE.equals(filters.getDumpedOnly()));
+		if (filters.getHideLowConfidence() != null)
+		{
+			hideLowConfidence.setSelected(filters.getHideLowConfidence());
+		}
+		if (filters.getDiscountOnly() != null)
+		{
+			discountOnly.setSelected(filters.getDiscountOnly());
+		}
+		if (filters.getDumpedOnly() != null)
+		{
+			dumpedOnly.setSelected(filters.getDumpedOnly());
+		}
 		minTotalProfitField.setText(formatLong(filters.getMinTotalProfit()));
 		minGpPerHourField.setText(formatLong(filters.getMinGpPerHour()));
 		minConfidenceField.setText(formatConfidencePercent(filters.getMinConfidenceScore()));
@@ -190,16 +204,15 @@ class SlotOptimizerFiltersPanel
 		advancedBody.setLayout(new BoxLayout(advancedBody, BoxLayout.Y_AXIS));
 		PluginUi.transparent(advancedBody);
 		advancedBody.add(PluginUi.labeledField("Min total profit", minTotalProfitField));
-		advancedBody.add(PluginUi.gap(6));
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_SM));
 		advancedBody.add(PluginUi.labeledField("Min GP / hr", minGpPerHourField));
-		advancedBody.add(PluginUi.gap(6));
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_SM));
 		advancedBody.add(PluginUi.labeledField("Min confidence %", minConfidenceField));
-		minConfidenceField.setToolTipText("0–100, e.g. 55");
-		advancedBody.add(PluginUi.gap(8));
+		minConfidenceField.setToolTipText("0-100, e.g. 55");
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_MD));
 		advancedBody.add(PluginUi.caption("Quality"));
-		advancedBody.add(hideLowConfidence);
-		advancedBody.add(discountOnly);
-		advancedBody.add(dumpedOnly);
+		advancedBody.add(PluginUi.gap(PluginUi.SPACING_XS));
+		advancedBody.add(PluginUi.checkboxGroup(hideLowConfidence, discountOnly, dumpedOnly));
 	}
 
 	private void wireListeners()
@@ -231,10 +244,9 @@ class SlotOptimizerFiltersPanel
 		minTotalProfitField.getDocument().addDocumentListener(textListener);
 		minGpPerHourField.getDocument().addDocumentListener(textListener);
 
-		javax.swing.event.ChangeListener toggleListener = e -> persistAndNotify();
-		hideLowConfidence.addChangeListener(toggleListener);
-		discountOnly.addChangeListener(toggleListener);
-		dumpedOnly.addChangeListener(toggleListener);
+		hideLowConfidence.addActionListener(e -> persistAndNotify());
+		discountOnly.addActionListener(e -> persistAndNotify());
+		dumpedOnly.addActionListener(e -> persistAndNotify());
 		membersCombo.addActionListener(e -> persistAndNotify());
 	}
 
@@ -251,16 +263,24 @@ class SlotOptimizerFiltersPanel
 	private void restoreFromConfig()
 	{
 		suppressEvents = true;
-		hideLowConfidence.setSelected(config.slotOptHideLowConfidence());
-		discountOnly.setSelected(config.slotOptDiscountOnly());
-		dumpedOnly.setSelected(config.slotOptDumpedOnly());
-		minNetProfitField.setText(config.slotOptMinNetProfit());
-		minRoiField.setText(config.slotOptMinRoiPercent());
-		minTotalProfitField.setText(config.slotOptMinTotalProfit());
-		minGpPerHourField.setText(config.slotOptMinGpPerHour());
-		minConfidenceField.setText(config.slotOptMinConfidencePercent());
+		hideLowConfidence.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "slotOptHideLowConfidence", false)
+		);
+		discountOnly.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "slotOptDiscountOnly", false)
+		);
+		dumpedOnly.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "slotOptDumpedOnly", false)
+		);
+		minNetProfitField.setText(FlipFinderConfigIO.getString(configManager, "slotOptMinNetProfit", ""));
+		minRoiField.setText(FlipFinderConfigIO.getString(configManager, "slotOptMinRoiPercent", ""));
+		minTotalProfitField.setText(FlipFinderConfigIO.getString(configManager, "slotOptMinTotalProfit", ""));
+		minGpPerHourField.setText(FlipFinderConfigIO.getString(configManager, "slotOptMinGpPerHour", ""));
+		minConfidenceField.setText(
+			FlipFinderConfigIO.getString(configManager, "slotOptMinConfidencePercent", "")
+		);
 
-		String members = config.slotOptMembersFilter();
+		String members = FlipFinderConfigIO.getString(configManager, "slotOptMembersFilter", "all");
 		int index = 0;
 		for (int i = 0; i < MEMBERS_VALUES.length; i++)
 		{

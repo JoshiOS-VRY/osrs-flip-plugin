@@ -7,7 +7,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 
 /**
- * Copilot overlay accessor — delegates to {@link ItemsClient} so GE overlay
+ * Copilot overlay accessor - delegates to {@link ItemsClient} so GE overlay
  * numbers always match market detail and GE setup.
  */
 @Singleton

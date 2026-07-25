@@ -4,10 +4,10 @@ package com.osrsflipfinder.runelite;
 enum SidebarSection
 {
 	CONNECTION("Connection"),
-	MY_SLOTS("My slots"),
+	MY_SLOTS("Flip manager"),
 	SESSION("Session stats"),
 	MARKET("Market"),
-	GE_SETUP("GE setup"),
+	GE_SETUP("GE copilot"),
 	IMPORT("Import history"),
 	RECIPE_FLIPS("Recipe flips");
 

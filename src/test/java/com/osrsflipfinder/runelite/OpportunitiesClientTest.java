@@ -2,7 +2,6 @@ package com.osrsflipfinder.runelite;
 
 import org.junit.Test;
 
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class OpportunitiesClientTest
@@ -49,6 +48,31 @@ public class OpportunitiesClientTest
 		after.setMaxOpportunities(500);
 		after.setAdvancedFilters(true);
 
-		assertFalse(OpportunitiesClient.entitlementsChanged(before, after));
+		org.junit.Assert.assertFalse(OpportunitiesClient.entitlementsChanged(before, after));
+	}
+
+	@Test
+	public void computeNextRefreshAtMsUsesPublishMetaWhenConfident()
+	{
+		long now = 1_000_000L;
+		MarketQueryResponse.Meta meta = new MarketQueryResponse.Meta();
+		meta.setPhaseConfidence(0.9);
+		meta.setNextPublishInMs(12_000L);
+
+		long at = OpportunitiesClient.computeNextRefreshAtMs(meta, 500L, 60_000L, now);
+		assertTrue(at >= now + 12_000L + 500L);
+		assertTrue(at <= now + 12_000L + 500L + 400L);
+	}
+
+	@Test
+	public void computeNextRefreshAtMsFallsBackWhenConfidenceLow()
+	{
+		long now = 1_000_000L;
+		MarketQueryResponse.Meta meta = new MarketQueryResponse.Meta();
+		meta.setPhaseConfidence(0.1);
+		meta.setNextPublishInMs(12_000L);
+
+		long at = OpportunitiesClient.computeNextRefreshAtMs(meta, 500L, 30_000L, now);
+		org.junit.Assert.assertEquals(now + 30_000L, at);
 	}
 }

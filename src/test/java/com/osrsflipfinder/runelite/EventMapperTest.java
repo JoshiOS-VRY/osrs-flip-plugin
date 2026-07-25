@@ -99,6 +99,32 @@ public class EventMapperTest
 	}
 
 	@Test
+	public void mapsSlotClearedFromActiveBuyOfferWithFillToBought()
+	{
+		OfferSnapshot previous = OfferSnapshot.from(mockOffer(
+			GrandExchangeOfferState.BUYING,
+			33639,
+			136_505_000,
+			2,
+			2
+		));
+
+		IngestGeEvent event = EventMapper.mapSlotCleared(
+			previous,
+			0,
+			12345L,
+			"TestPlayer",
+			"Necklace of rupture",
+			Instant.parse("2026-01-15T12:01:00Z")
+		);
+
+		assertEquals("bought", event.getState());
+		assertEquals("buy", event.getSide());
+		assertEquals(2, event.getQuantity());
+		assertEquals(2, event.getQuantityFilled());
+	}
+
+	@Test
 	public void mapsSlotClearedFromActiveBuyOffer()
 	{
 		OfferSnapshot previous = OfferSnapshot.from(mockOffer(

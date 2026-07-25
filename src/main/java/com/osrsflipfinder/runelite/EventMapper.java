@@ -125,16 +125,21 @@ public final class EventMapper
 		switch (previous.getState())
 		{
 			case BUYING:
-				state = "cancelled_buy";
-				break;
 			case SELLING:
-				state = "cancelled_sell";
+				state = GeTerminalState.resolveOnSlotClear(
+					previous.getState(),
+					previous.getQuantityFilled()
+				);
 				break;
 			default:
 				return null;
 		}
 
 		String side = mapSide(previous.getState());
+		int terminalQty = GeTerminalState.terminalQuantity(
+			previous.getQuantity(),
+			previous.getQuantityFilled()
+		);
 		String occurredAtIso = occurredAt.toString();
 		String accountHashValue = String.valueOf(accountHash);
 		String idempotencyKey = IdempotencyKeyBuilder.build(
@@ -142,8 +147,8 @@ public final class EventMapper
 			previous.getItemId(),
 			side,
 			previous.getPrice(),
-			previous.getQuantity(),
-			previous.getQuantityFilled(),
+			terminalQty,
+			terminalQty,
 			state,
 			occurredAtIso,
 			slot
@@ -157,8 +162,8 @@ public final class EventMapper
 			.itemName(itemName)
 			.side(side)
 			.price(previous.getPrice())
-			.quantity(previous.getQuantity())
-			.quantityFilled(previous.getQuantityFilled())
+			.quantity(terminalQty)
+			.quantityFilled(terminalQty)
 			.state(state)
 			.occurredAt(occurredAtIso)
 			.slot(slot)

@@ -1,16 +1,21 @@
 package com.osrsflipfinder.runelite;
 
+import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -19,6 +24,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
+import javax.swing.LookAndFeel;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
@@ -32,7 +38,7 @@ import net.runelite.client.util.SwingUtil;
  *
  * <p>Content must stay within {@link PluginPanel#PANEL_WIDTH}. The client reserves
  * {@link PluginPanel#SCROLLBAR_WIDTH} beside that column via {@code PluginPanel}'s
- * wrapped panel — do not add a nested {@code JScrollPane} or manual gutter padding.
+ * wrapped panel - do not add a nested {@code JScrollPane} or manual gutter padding.
  */
 final class PluginUi
 {
@@ -41,18 +47,61 @@ final class PluginUi
 	static final Color POSITIVE = ColorScheme.PROGRESS_COMPLETE_COLOR;
 	static final Color NEGATIVE = ColorScheme.PROGRESS_ERROR_COLOR;
 	static final Color WARNING = ColorScheme.PROGRESS_INPROGRESS_COLOR;
+	/** Soft secondary values in HTML metric lines. */
+	static final Color TEXT_SOFT = new Color(0xCCCCCC);
+	/** Dim separators / tertiary text in HTML metric lines. */
+	static final Color TEXT_DIM = new Color(0x888888);
+	/** Hint/caption gray for wrapped captions. */
+	static final Color TEXT_HINT = new Color(0x999999);
 
-	/** RuneScape bitmap fonts only cover ASCII — avoid Unicode arrows/symbols in labels. */
+	/** RuneScape bitmap fonts only cover ASCII - avoid Unicode arrows/symbols in labels. */
 	static final String PLACEHOLDER = "-";
 
 	static final int CONTENT_WIDTH = PluginPanel.PANEL_WIDTH;
+	static final int INNER_WIDTH = SidebarContentPanel.INNER_WIDTH;
 	static final int PADDING = PluginPanel.BORDER_OFFSET;
+
+	/** Spacing scale - see docs/DESIGN_SYSTEM.md */
+	static final int SPACING_XS = 4;
+	static final int SPACING_SM = 6;
+	static final int SPACING_MD = 8;
+	static final int SPACING_LG = 12;
+	static final int SPACING_XL = PADDING;
 
 	private static final EmptyBorder CARD_PADDING = new EmptyBorder(PADDING, PADDING, PADDING, PADDING);
 	private static final MatteBorder SECTION_RULE = new MatteBorder(0, 0, 1, 0, ColorScheme.MEDIUM_GRAY_COLOR);
 
+	private static final int CHECKBOX_GLYPH = 14;
+	/** Left inset matching {@link #checkboxGroup} icon column (rule + padding). */
+	private static final int CHECKBOX_ICON_INDENT = 2 + SPACING_SM;
+	/** Left inset aligning nested checkbox label with labels inside {@link #checkboxGroup}. */
+	private static final int CHECKBOX_LABEL_INDENT = CHECKBOX_ICON_INDENT + CHECKBOX_GLYPH + SPACING_SM;
+
+	private static final Icon CHECKBOX_OFF = checkboxIcon(false, true);
+	private static final Icon CHECKBOX_ON = checkboxIcon(true, true);
+	private static final Icon CHECKBOX_OFF_DISABLED = checkboxIcon(false, false);
+	private static final Icon CHECKBOX_ON_DISABLED = checkboxIcon(true, false);
+
 	private PluginUi()
 	{
+	}
+
+	/** Standard inset for the main sidebar column (aligns with RuneLite {@link PluginPanel}). */
+	static EmptyBorder pageInsets()
+	{
+		return new EmptyBorder(PADDING, PADDING, PADDING, PADDING);
+	}
+
+	/** Wrap width for multi-line body copy in the content column. */
+	static int bodyTextWrapWidth()
+	{
+		return INNER_WIDTH;
+	}
+
+	/** Wrap width for text beside a 32px icon in a slot/opportunity row. */
+	static int rowTextWrapWidth()
+	{
+		return INNER_WIDTH - 32 - (SPACING_SM * 3) - 4;
 	}
 
 	static void transparent(JComponent component)
@@ -66,6 +115,155 @@ final class PluginUi
 		gap.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		SidebarContentPanel.lockWidthFixed(gap, height);
 		return gap;
+	}
+
+	/** Vertical stack with {@link #SPACING_SM} between children. */
+	static JPanel verticalStack(JComponent... children)
+	{
+		JPanel stack = new SidebarContentPanel();
+		stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+		transparent(stack);
+		stack.setAlignmentX(Component.LEFT_ALIGNMENT);
+		for (int i = 0; i < children.length; i++)
+		{
+			if (children[i] == null)
+			{
+				continue;
+			}
+			children[i].setAlignmentX(Component.LEFT_ALIGNMENT);
+			stack.add(children[i]);
+			if (i < children.length - 1)
+			{
+				stack.add(gap(SPACING_SM));
+			}
+		}
+		SidebarContentPanel.lockWidth(stack);
+		return stack;
+	}
+
+	/** Card wrapping a form block (browse controls, connection form, etc.). */
+	static JPanel formCard(JComponent inner)
+	{
+		JPanel shell = card();
+		inner.setAlignmentX(Component.LEFT_ALIGNMENT);
+		shell.add(inner);
+		return shell;
+	}
+
+	/** Indented checkbox group (e.g. Quality filters). */
+	static JPanel checkboxGroup(JCheckBox... boxes)
+	{
+		JPanel group = new SidebarContentPanel();
+		group.setLayout(new BoxLayout(group, BoxLayout.Y_AXIS));
+		transparent(group);
+		group.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 2, 0, 0, ColorScheme.MEDIUM_GRAY_COLOR),
+			new EmptyBorder(0, SPACING_SM, 0, 0)
+		));
+		group.setAlignmentX(Component.LEFT_ALIGNMENT);
+		for (JCheckBox box : boxes)
+		{
+			styleCheckBox(box);
+			box.setAlignmentX(Component.LEFT_ALIGNMENT);
+			group.add(box);
+		}
+		SidebarContentPanel.lockWidth(group);
+		return group;
+	}
+
+	/**
+	 * FlipX sidebar checkboxes use custom icons - FlatLaf/RuneLite defaults paint a checkmark the same
+	 * tone as {@link ColorScheme#DARKER_GRAY_COLOR} panels (effectively invisible).
+	 */
+	static void styleCheckBox(JCheckBox box)
+	{
+		box.setFont(FontManager.getRunescapeSmallFont());
+		box.setForeground(ColorScheme.TEXT_COLOR);
+		box.setFocusPainted(false);
+		box.setIconTextGap(SPACING_SM);
+		box.setOpaque(false);
+		LookAndFeel.installProperty(box, "contentAreaFilled", false);
+		box.setIcon(CHECKBOX_OFF);
+		box.setSelectedIcon(CHECKBOX_ON);
+		box.setDisabledIcon(CHECKBOX_OFF_DISABLED);
+		box.setDisabledSelectedIcon(CHECKBOX_ON_DISABLED);
+		box.setBorder(new EmptyBorder(SPACING_XS, 0, SPACING_XS, 0));
+	}
+
+	private static Icon checkboxIcon(boolean selected, boolean enabled)
+	{
+		return new Icon()
+		{
+			@Override
+			public void paintIcon(Component c, Graphics g, int x, int y)
+			{
+				Graphics2D g2 = (Graphics2D) g.create();
+				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				int w = CHECKBOX_GLYPH;
+				int h = CHECKBOX_GLYPH;
+				g2.setColor(ColorScheme.MEDIUM_GRAY_COLOR);
+				g2.drawRect(x, y, w - 1, h - 1);
+				g2.setColor(enabled ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.DARK_GRAY_COLOR);
+				g2.fillRect(x + 1, y + 1, w - 2, h - 2);
+				if (selected)
+				{
+					g2.setColor(enabled ? GOLD : ColorScheme.LIGHT_GRAY_COLOR);
+					g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+					g2.drawLine(x + 3, y + 7, x + 6, y + 10);
+					g2.drawLine(x + 6, y + 10, x + 11, y + 4);
+				}
+				g2.dispose();
+			}
+
+			@Override
+			public int getIconWidth()
+			{
+				return CHECKBOX_GLYPH + 1;
+			}
+
+			@Override
+			public int getIconHeight()
+			{
+				return CHECKBOX_GLYPH + 1;
+			}
+		};
+	}
+
+	static void insetCheckBox(JCheckBox box)
+	{
+		styleCheckBox(box);
+	}
+
+	/** Secondary control nested under a field (e.g. sort direction). */
+	static JPanel indented(JComponent child)
+	{
+		JPanel panel = new SidebarContentPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+		transparent(panel);
+		int indent = child instanceof JCheckBox ? CHECKBOX_LABEL_INDENT : SPACING_LG;
+		panel.setBorder(new EmptyBorder(0, indent, 0, 0));
+		child.setAlignmentX(Component.LEFT_ALIGNMENT);
+		if (child instanceof JCheckBox)
+		{
+			styleCheckBox((JCheckBox) child);
+		}
+		panel.add(child);
+		SidebarContentPanel.lockWidth(panel);
+		return panel;
+	}
+
+	/** Checkbox row aligned with the icon column inside {@link #checkboxGroup}. */
+	static JPanel nestedCheckbox(JCheckBox box)
+	{
+		JPanel panel = new SidebarContentPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+		transparent(panel);
+		panel.setBorder(new EmptyBorder(0, CHECKBOX_ICON_INDENT, 0, 0));
+		styleCheckBox(box);
+		box.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.add(box);
+		SidebarContentPanel.lockWidth(panel);
+		return panel;
 	}
 
 	static JPanel header(String title, String subtitle, JLabel statusBadge)
@@ -101,7 +299,7 @@ final class PluginUi
 		JPanel row = new SidebarContentPanel();
 		row.setLayout(new BorderLayout());
 		transparent(row);
-		row.setBorder(new CompoundBorder(SECTION_RULE, new EmptyBorder(PADDING, 0, PADDING, 0)));
+		row.setBorder(new CompoundBorder(SECTION_RULE, new EmptyBorder(SPACING_MD, 0, SPACING_MD, 0)));
 		row.add(sectionTitle(title), BorderLayout.CENTER);
 		SidebarContentPanel.lockWidth(row);
 		return row;
@@ -168,13 +366,13 @@ final class PluginUi
 		JPanel wrapper = new SidebarContentPanel();
 		wrapper.setLayout(new BorderLayout());
 		transparent(wrapper);
-		wrapper.setBorder(new EmptyBorder(0, 0, PADDING, 0));
+		wrapper.setBorder(new EmptyBorder(0, 0, SPACING_MD, 0));
 		wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
 		SidebarContentPanel.lockWidth(wrapper);
 
 		JPanel header = new JPanel(new BorderLayout(6, 0));
 		transparent(header);
-		header.setBorder(new CompoundBorder(SECTION_RULE, new EmptyBorder(PADDING, 0, PADDING, 0)));
+		header.setBorder(new CompoundBorder(SECTION_RULE, new EmptyBorder(SPACING_MD, 0, SPACING_MD, 0)));
 		header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
 		JButton toggle = new JButton(startOpen ? "v" : ">");
@@ -227,25 +425,84 @@ final class PluginUi
 
 	static JLabel wrappedCaption(String text)
 	{
-		return wrappedCaption(text, CONTENT_WIDTH - 2);
+		return wrappedCaption(text, INNER_WIDTH);
 	}
 
 	static JLabel cardHint(String text)
 	{
-		return wrappedCaption(text, CONTENT_WIDTH - (PADDING * 2) - 6);
+		return wrappedCaption(text, INNER_WIDTH - (PADDING * 2) - 6);
+	}
+
+	/** Hex color for inline HTML spans (always from {@link Color} tokens). */
+	static String htmlColor(Color color)
+	{
+		return String.format("#%06x", color.getRGB() & 0xFFFFFF);
+	}
+
+	static String htmlSpan(Color color, String text)
+	{
+		return "<span style='color:" + htmlColor(color) + ";'>" + escapeHtml(text) + "</span>";
+	}
+
+	static String htmlSep()
+	{
+		return htmlSpan(TEXT_DIM, " | ");
+	}
+
+	static JLabel wrappedBody(String text, int wrapWidth, Color color, boolean bold)
+	{
+		Font font = bold ? FontManager.getRunescapeBoldFont() : FontManager.getRunescapeSmallFont();
+		JLabel label = new JLabel("<html><div style='width:" + Math.max(80, wrapWidth) + "px;color:"
+			+ htmlColor(color) + ";'>" + escapeHtml(text) + "</div></html>");
+		label.setFont(font);
+		return label;
+	}
+
+	static void stackLine(JPanel column, JComponent line)
+	{
+		line.setAlignmentX(Component.LEFT_ALIGNMENT);
+		column.add(line);
+		column.add(gap(SPACING_XS));
 	}
 
 	static JLabel wrappedCaption(String text, int wrapWidth)
 	{
-		JLabel label = new JLabel("<html><div style='width:" + Math.max(120, wrapWidth) + "px;color:#999999;'>"
-			+ escapeHtml(text) + "</div></html>");
+		JLabel label = new JLabel("<html><div style='width:" + Math.max(120, wrapWidth) + "px;color:"
+			+ htmlColor(TEXT_HINT) + ";'>" + escapeHtml(text) + "</div></html>");
 		label.setFont(FontManager.getRunescapeSmallFont());
 		return label;
 	}
 
 	static JLabel hint(String text)
 	{
-		return wrappedCaption(text);
+		JLabel label = wrappedCaption(text, INNER_WIDTH);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		fullWidthGrow(label);
+		return label;
+	}
+
+	/** Compact empty-state block for list panels. */
+	static JPanel emptyState(String message)
+	{
+		JPanel panel = new SidebarContentPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+		transparent(panel);
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		JLabel body = hint(message);
+		panel.add(body);
+		fullWidthGrow(panel);
+		return panel;
+	}
+
+	static void setMultilineCaption(JLabel label, String text)
+	{
+		setMultilineCaption(label, text, ColorScheme.LIGHT_GRAY_COLOR);
+	}
+
+	static void setMultilineCaption(JLabel label, String text, Color color)
+	{
+		label.setText("<html><div style='width:" + INNER_WIDTH + "px;color:" + htmlColor(color) + ";'>"
+			+ escapeHtml(text) + "</div></html>");
 	}
 
 	static JLabel loadingCaption(String text)
@@ -255,8 +512,8 @@ final class PluginUi
 		return label;
 	}
 
-	/** Session stats hero — gold top rule, large signed profit, caption. */
-	static JPanel sessionProfitHero(JLabel profitLabel, String caption)
+	/** Session stats hero - gold top rule, large signed profit, optional subline (height grows with text). */
+	static JPanel sessionProfitHero(JLabel profitLabel, String caption, JLabel subLabel)
 	{
 		JPanel hero = new SidebarContentPanel();
 		hero.setLayout(new BoxLayout(hero, BoxLayout.Y_AXIS));
@@ -266,7 +523,7 @@ final class PluginUi
 				BorderFactory.createMatteBorder(2, 0, 0, 0, GOLD),
 				BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1, true)
 			),
-			new EmptyBorder(8, 8, 6, 8)
+			new EmptyBorder(8, 8, 8, 8)
 		));
 		hero.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -279,17 +536,55 @@ final class PluginUi
 		profitLabel.setFont(FontManager.getRunescapeBoldFont().deriveFont(18f));
 		profitLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+		subLabel.setHorizontalAlignment(JLabel.CENTER);
+		subLabel.setFont(FontManager.getRunescapeSmallFont());
+		subLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		subLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
 		hero.add(captionLabel);
 		hero.add(profitLabel);
-		SidebarContentPanel.lockWidthFixed(hero, 56);
+		hero.add(subLabel);
+		SidebarContentPanel.lockWidth(hero);
 		return hero;
 	}
 
-	/** Four-up hero metrics in a 2x2 grid — fits large GP values in the narrow sidebar. */
+	/** @deprecated use {@link #sessionProfitHero(JLabel, String, JLabel)} */
+	static JPanel sessionProfitHero(JLabel profitLabel, String caption)
+	{
+		return sessionProfitHero(profitLabel, caption, caption(" "));
+	}
+
+	/** Horizontal padding inside hero/summary grids (border insets left + right). */
+	private static final int GRID_STAT_H_INSET = 8;
+	private static final int GRID_STAT_HGAP = 4;
+
+	/** Width of one cell in a 2-column hero grid (~100px at default sidebar width). */
+	static int heroGridCellWidth(int columns)
+	{
+		int cols = Math.max(1, columns);
+		return Math.max(
+			44,
+			(INNER_WIDTH - GRID_STAT_H_INSET - GRID_STAT_HGAP * (cols - 1)) / cols
+		);
+	}
+
+	/** Centered value text that wraps inside a grid stat cell (use for GP in hero grids). */
+	static void setHeroGridStatValue(JLabel label, String displayText, String tooltipText)
+	{
+		int w = heroGridCellWidth(2);
+		label.setText(
+			"<html><div style='width:" + w + "px;text-align:center;'>"
+				+ escapeHtml(displayText)
+				+ "</div></html>"
+		);
+		label.setToolTipText(tooltipText != null && !tooltipText.isEmpty() ? tooltipText : null);
+	}
+
+	/** Four-up hero metrics in a 2x2 grid - fits large GP values in the narrow sidebar. */
 	static JPanel detailHeroGrid(JComponent... stats)
 	{
 		JPanel grid = new SidebarContentPanel();
-		grid.setLayout(new GridLayout(2, 2, 4, 4));
+		grid.setLayout(new GridLayout(2, 2, GRID_STAT_HGAP, GRID_STAT_HGAP));
 		grid.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		grid.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createCompoundBorder(
@@ -303,7 +598,7 @@ final class PluginUi
 		{
 			grid.add(stat);
 		}
-		SidebarContentPanel.lockWidthFixed(grid, 72);
+		SidebarContentPanel.lockWidth(grid);
 		return grid;
 	}
 
@@ -449,6 +744,7 @@ final class PluginUi
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(fieldLabel(label), BorderLayout.NORTH);
 		panel.add(field, BorderLayout.CENTER);
+		panel.setBorder(new EmptyBorder(0, 0, SPACING_XS, 0));
 		SidebarContentPanel.lockWidth(panel);
 		return panel;
 	}
@@ -457,50 +753,70 @@ final class PluginUi
 	{
 		combo.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		combo.setForeground(Color.WHITE);
+		fullWidth(combo);
 	}
 
 	static JPanel summaryStrip(JComponent... stats)
 	{
-		int columns = stats.length;
+		int columns = Math.max(1, stats.length);
 		JPanel strip = new SidebarContentPanel();
-		strip.setLayout(new GridLayout(1, columns, 4, 0));
+		strip.setLayout(new GridLayout(1, columns, GRID_STAT_HGAP, 0));
 		strip.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		strip.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createCompoundBorder(
 				BorderFactory.createMatteBorder(2, 0, 0, 0, GOLD_DIM),
 				BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1, true)
 			),
-			new EmptyBorder(6, 4, 4, 4)
+			new EmptyBorder(SPACING_SM, SPACING_XS, SPACING_SM, SPACING_XS)
 		));
 		strip.setAlignmentX(Component.LEFT_ALIGNMENT);
 		for (JComponent stat : stats)
 		{
 			strip.add(stat);
 		}
-		SidebarContentPanel.lockWidthFixed(strip, 38);
+		SidebarContentPanel.lockWidth(strip);
 		return strip;
 	}
 
 	static JPanel statCell(JLabel valueLabel, String caption)
 	{
+		return statCell(valueLabel, caption, heroGridCellWidth(2));
+	}
+
+	static JPanel statCell(JLabel valueLabel, String caption, int cellWidth)
+	{
 		JPanel cell = new JPanel();
 		cell.setLayout(new BoxLayout(cell, BoxLayout.Y_AXIS));
 		cell.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		cell.setAlignmentX(Component.CENTER_ALIGNMENT);
 		valueLabel.setForeground(Color.WHITE);
 		valueLabel.setHorizontalAlignment(JLabel.CENTER);
-		valueLabel.setFont(FontManager.getRunescapeBoldFont());
+		valueLabel.setFont(FontManager.getRunescapeSmallFont());
 		valueLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-		JLabel captionLabel = new JLabel(caption, JLabel.CENTER);
+		JLabel captionLabel = new JLabel();
 		captionLabel.setFont(FontManager.getRunescapeSmallFont());
 		captionLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		captionLabel.setHorizontalAlignment(JLabel.CENTER);
 		captionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+		setGridStatCaption(captionLabel, caption, cellWidth);
 		cell.add(valueLabel);
+		cell.add(gap(SPACING_XS));
 		cell.add(captionLabel);
-		SidebarContentPanel.lockWidthFixed(cell, 30);
+		Dimension cellMax = new Dimension(cellWidth, Short.MAX_VALUE);
+		cell.setMaximumSize(cellMax);
 		return cell;
 	}
 
-	/** Bordered block of label/value rows for item detail — fixed row heights, no vertical stretch. */
+	private static void setGridStatCaption(JLabel captionLabel, String caption, int cellWidth)
+	{
+		captionLabel.setText(
+			"<html><div style='width:" + cellWidth + "px;text-align:center;'>"
+				+ escapeHtml(caption)
+				+ "</div></html>"
+		);
+	}
+
+	/** Bordered block of label/value rows for item detail - fixed row heights, no vertical stretch. */
 	static JPanel statBlock()
 	{
 		JPanel block = new SidebarContentPanel();
@@ -532,14 +848,20 @@ final class PluginUi
 		valueLabel.setHorizontalAlignment(JLabel.RIGHT);
 		row.add(labelLabel, BorderLayout.WEST);
 		row.add(valueLabel, BorderLayout.EAST);
-		SidebarContentPanel.lockWidthFixed(row, 16);
+		SidebarContentPanel.lockWidthFixed(row, 18);
 		block.add(row);
+	}
+
+	/** Wrap width for item titles inside a {@link #card()}. */
+	static int cardBodyWrapWidth()
+	{
+		return Math.max(80, INNER_WIDTH - (PADDING * 2) - 4);
 	}
 
 	static void finalizeStatBlock(JPanel block)
 	{
 		int rows = block.getComponentCount();
-		int height = Math.max(24, rows * 16 + 14);
+		int height = Math.max(24, rows * 18 + 14);
 		SidebarContentPanel.lockWidthFixed(block, height);
 	}
 
@@ -571,7 +893,22 @@ final class PluginUi
 
 	static void lockRowHeight(JComponent component, int height)
 	{
+		lockRowHeight(component, height, false);
+	}
+
+	/**
+	 * Fixed-height rows (e.g. market list). Set {@code variableLines} when line count can change -
+	 * never cap max height or text will overlap.
+	 */
+	static void lockRowHeight(JComponent component, int height, boolean variableLines)
+	{
 		component.setAlignmentX(Component.LEFT_ALIGNMENT);
+		if (variableLines)
+		{
+			SidebarContentPanel.lockWidth(component);
+			component.setMinimumSize(new Dimension(INNER_WIDTH, height));
+			return;
+		}
 		SidebarContentPanel.lockWidthFixed(component, height);
 	}
 
@@ -582,7 +919,7 @@ final class PluginUi
 		transparent(header);
 		header.setAlignmentX(Component.LEFT_ALIGNMENT);
 		header.add(backButton(onBack));
-		header.add(gap(6));
+		header.add(gap(SPACING_SM));
 		JLabel titleLabel = sectionTitle(title);
 		titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		header.add(titleLabel);
@@ -592,7 +929,7 @@ final class PluginUi
 			statusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 			header.add(statusLabel);
 		}
-		header.add(gap(8));
+		header.add(gap(SPACING_MD));
 		SidebarContentPanel.lockWidth(header);
 		return header;
 	}
@@ -633,7 +970,8 @@ final class PluginUi
 		String display = text;
 		if (text != null && text.length() > maxChars)
 		{
-			display = text.substring(0, maxChars - 1) + "…";
+			int keep = Math.max(0, maxChars - 3);
+			display = text.substring(0, keep) + "...";
 		}
 		JLabel label = new JLabel(display);
 		label.setToolTipText(text);
@@ -643,10 +981,7 @@ final class PluginUi
 	static JCheckBox checkBox(String label, boolean selected)
 	{
 		JCheckBox box = new JCheckBox(label, selected);
-		box.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		box.setForeground(Color.WHITE);
-		box.setFont(FontManager.getRunescapeSmallFont());
-		box.setFocusPainted(false);
+		styleCheckBox(box);
 		return box;
 	}
 

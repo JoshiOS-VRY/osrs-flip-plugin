@@ -66,7 +66,7 @@ public class GeWatchlistHintOverlay extends Overlay
 			{
 				break;
 			}
-			graphics.drawString("• " + item.getItemName(), x, y);
+			graphics.drawString("* " + item.getItemName(), x, y);
 			y += 12;
 			shown++;
 		}
