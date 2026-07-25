@@ -36,6 +36,8 @@ public class PairingService
 	{
 		String apiKey;
 		String message;
+		boolean networkIntelligenceOptedIn;
+		boolean welcomeProGranted;
 	}
 
 	public PairingResult pair(String code, String deviceId, String label) throws IOException
@@ -67,9 +69,18 @@ public class PairingService
 				throw new IOException("Pairing response missing apiKey");
 			}
 
+			boolean networkOptedIn = parsed.has("networkIntelligence")
+				&& parsed.getAsJsonObject("networkIntelligence").has("optedIn")
+				&& parsed.getAsJsonObject("networkIntelligence").get("optedIn").getAsBoolean();
+			boolean welcomePro = parsed.has("networkIntelligence")
+				&& parsed.getAsJsonObject("networkIntelligence").has("welcomeProGranted")
+				&& parsed.getAsJsonObject("networkIntelligence").get("welcomeProGranted").getAsBoolean();
+
 			return new PairingResult(
 				parsed.get("apiKey").getAsString(),
-				parsed.has("message") ? parsed.get("message").getAsString() : "Paired successfully"
+				parsed.has("message") ? parsed.get("message").getAsString() : "Paired successfully",
+				networkOptedIn,
+				welcomePro
 			);
 		}
 	}

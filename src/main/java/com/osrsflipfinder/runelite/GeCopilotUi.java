@@ -104,8 +104,8 @@ final class GeCopilotUi
 		net.setForeground(netGp >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE);
 		PluginUi.setHeroGridStatValue(
 			net,
-			MarketFormat.gpCompactSigned(netGp),
-			MarketFormat.signedGp(netGp)
+			MarketFormat.signedGp(netGp),
+			null
 		);
 
 		JLabel roi = new JLabel();
@@ -121,8 +121,8 @@ final class GeCopilotUi
 		long hr = opp.getEstimatedProfitPerHour();
 		PluginUi.setHeroGridStatValue(
 			gpHr,
-			MarketFormat.gpCompact(hr),
-			MarketFormat.gp(hr)
+			MarketFormat.gp(hr),
+			null
 		);
 
 		JLabel profit30 = new JLabel();
@@ -130,8 +130,8 @@ final class GeCopilotUi
 		profit30.setForeground(p30 >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE);
 		PluginUi.setHeroGridStatValue(
 			profit30,
-			MarketFormat.gpCompactSigned(p30),
-			MarketFormat.signedGp(p30)
+			MarketFormat.signedGp(p30),
+			null
 		);
 
 		return PluginUi.detailHeroGrid(
@@ -172,8 +172,8 @@ final class GeCopilotUi
 	{
 		JPanel block = PluginUi.statBlock();
 		PluginUi.addStatLine(block, "Fill time", FlipCopilotPresenter.formatTurnover(opp.getEstimatedTurnoverHours()));
-		PluginUi.addStatLine(block, "Vol 5m", FlipCopilotPresenter.formatVolume(opp.getFiveMinuteVolume()));
-		PluginUi.addStatLine(block, "Vol 1h", FlipCopilotPresenter.formatVolume(opp.getOneHourVolume()));
+		PluginUi.addStatLine(block, "Vol 5m", MarketFormat.gp(opp.getFiveMinuteVolume()));
+		PluginUi.addStatLine(block, "Vol 1h", MarketFormat.gp(opp.getOneHourVolume()));
 		PluginUi.finalizeStatBlock(block);
 		return labeledSection("Liquidity", block);
 	}

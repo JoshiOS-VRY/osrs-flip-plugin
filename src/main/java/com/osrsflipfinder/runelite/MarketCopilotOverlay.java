@@ -25,7 +25,7 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 @Slf4j
 public class MarketCopilotOverlay extends OverlayPanel
 {
-	private static final int PANEL_WIDTH = 212;
+	private static final int PANEL_WIDTH = 300;
 	private static final Color PANEL_BG = new Color(15, 17, 21, 215);
 
 	private final Client client;
@@ -119,35 +119,35 @@ public class MarketCopilotOverlay extends OverlayPanel
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Net")
-			.right(MarketFormat.gpCompactSigned(opp.getNetProfitPerItem()))
+			.right(MarketFormat.signedGp(opp.getNetProfitPerItem()))
 			.rightColor(opp.getNetProfitPerItem() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE)
 			.build());
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("ROI | GP/hr")
 			.right(MarketFormat.percent(opp.getNetRoiPercent()) + " | "
-				+ MarketFormat.gpCompact(opp.getEstimatedProfitPerHour()))
+				+ MarketFormat.gp(opp.getEstimatedProfitPerHour()))
 			.rightColor(ColorScheme.GRAND_EXCHANGE_ALCH)
 			.build());
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Buy | Sell")
-			.right(MarketFormat.gpCompact(opp.getEstimatedBuyPrice()) + " | "
-				+ MarketFormat.gpCompact(opp.getEstimatedSellPrice()))
+			.right(MarketFormat.gp(opp.getEstimatedBuyPrice()) + " | "
+				+ MarketFormat.gp(opp.getEstimatedSellPrice()))
 			.rightColor(Color.WHITE)
 			.build());
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Qty | ~30m")
 			.right(MarketFormat.qtyLimit(opp.getEstimatedTradableQuantity(), opp.getBuyLimit())
-				+ " | " + MarketFormat.gpCompactSigned(opp.getEstimatedProfit30m()))
+				+ " | " + MarketFormat.signedGp(opp.getEstimatedProfit30m()))
 			.rightColor(ColorScheme.LIGHT_GRAY_COLOR)
 			.build());
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Fill | 1h vol")
 			.right(FlipCopilotPresenter.formatTurnover(opp.getEstimatedTurnoverHours())
-				+ " | " + FlipCopilotPresenter.formatVolume(opp.getOneHourVolume()))
+				+ " | " + MarketFormat.gp(opp.getOneHourVolume()))
 			.rightColor(ColorScheme.LIGHT_GRAY_COLOR)
 			.build());
 

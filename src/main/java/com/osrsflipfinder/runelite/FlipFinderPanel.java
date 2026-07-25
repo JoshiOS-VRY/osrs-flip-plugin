@@ -64,7 +64,9 @@ public class FlipFinderPanel extends PluginPanel
 	private final JButton connectButton = PluginUi.primaryButton("Connect");
 	private final JButton disconnectButton = PluginUi.secondaryButton("Disconnect");
 	private final JButton settingsButton = PluginUi.linkButton("Web settings");
+	private final JButton networkButton = PluginUi.linkButton("Network opt-in");
 	private final JButton privacyButton = PluginUi.linkButton("Privacy");
+	private final JLabel pairingSuccessLabel = PluginUi.caption("");
 
 	private final JPanel pairingForm = new JPanel();
 	private final JPanel connectedSummary = new JPanel();
@@ -135,6 +137,7 @@ public class FlipFinderPanel extends PluginPanel
 		connectButton.addActionListener(e -> connect());
 		disconnectButton.addActionListener(e -> disconnect());
 		settingsButton.addActionListener(e -> openUrl("/settings/devices"));
+		networkButton.addActionListener(e -> openUrl("/settings#runelite-pairing"));
 		privacyButton.addActionListener(e -> openUrl("/privacy"));
 
 		sectionCombo.addActionListener(e ->
@@ -386,7 +389,10 @@ public class FlipFinderPanel extends PluginPanel
 		pairingForm.add(PluginUi.gap(PluginUi.SPACING_SM));
 		JPanel pairingInner = PluginUi.verticalStack(
 			PluginUi.hint(
-				"Enable GE upload or the Market panel in plugin settings, then pair below."
+				"On flipx.gg: generate a pairing code (network intelligence is on by default), then enter it below."
+			),
+			PluginUi.hint(
+				"Enable GE upload or the Market panel in plugin settings first."
 			),
 			PluginUi.labeledField("Pairing code", codeField),
 			connectButton
@@ -397,14 +403,20 @@ public class FlipFinderPanel extends PluginPanel
 
 		connectedSummary.setLayout(new BoxLayout(connectedSummary, BoxLayout.Y_AXIS));
 		PluginUi.transparent(connectedSummary);
-		JPanel summaryInner = PluginUi.verticalStack(metaLabel, queueLabel, lastSyncLabel, disconnectButton);
+		JPanel summaryInner = PluginUi.verticalStack(
+			metaLabel,
+			queueLabel,
+			lastSyncLabel,
+			pairingSuccessLabel,
+			disconnectButton
+		);
 		PluginUi.fullWidth(disconnectButton);
 		JPanel summaryCard = PluginUi.formCard(summaryInner);
 		PluginUi.fullWidth(summaryCard);
 		connectedSummary.add(summaryCard);
 		SidebarContentPanel.lockWidth(connectedSummary);
 
-		JPanel footerLinks = PluginUi.buttonRow(settingsButton, privacyButton);
+		JPanel footerLinks = PluginUi.buttonRow(settingsButton, networkButton, privacyButton);
 		PluginUi.fullWidth(footerLinks);
 
 		connectionViewPanel.setLayout(new BoxLayout(connectionViewPanel, BoxLayout.Y_AXIS));
@@ -448,6 +460,10 @@ public class FlipFinderPanel extends PluginPanel
 		boolean paired = isPairedForMarket();
 		pairingForm.setVisible(!paired);
 		connectedSummary.setVisible(paired);
+		if (!paired)
+		{
+			pairingSuccessLabel.setText("");
+		}
 	}
 
 	private void selectSection(SidebarSection section)
@@ -504,6 +520,25 @@ public class FlipFinderPanel extends PluginPanel
 					connectButton.setEnabled(true);
 					disconnectButton.setEnabled(true);
 					onError(null);
+					if (result.isNetworkIntelligenceOptedIn())
+					{
+						if (result.isWelcomeProGranted())
+						{
+							pairingSuccessLabel.setText(
+								"Network intelligence enabled on your FlipX account (welcome Pro unlocked on web)."
+							);
+						}
+						else
+						{
+							pairingSuccessLabel.setText("Network intelligence enabled on your FlipX account.");
+						}
+					}
+					else
+					{
+						pairingSuccessLabel.setText(
+							"Paired. Enable network intelligence on the web to contribute anonymized GE signals."
+						);
+					}
 					refreshUi();
 					geEventListener.backfillAllSlots();
 					selectSection(SidebarSection.MY_SLOTS);
