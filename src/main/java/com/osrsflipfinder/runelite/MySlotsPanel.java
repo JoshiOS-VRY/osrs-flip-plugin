@@ -233,7 +233,8 @@ class MySlotsPanel extends SidebarContentPanel
 				view.itemId,
 				view.itemName,
 				view.isBuy,
-				view.offerPrice,
+				view.limitPrice,
+				view.unitFillPrice,
 				view.filled,
 				view.totalQty,
 				view.inactiveSeconds,
@@ -322,6 +323,10 @@ class MySlotsPanel extends SidebarContentPanel
 			|| offer.getState() == GrandExchangeOfferState.BOUGHT;
 		int itemId = offer.getItemId();
 		String name = itemManager.getItemComposition(itemId).getName();
+		int limitPrice = GeOfferPricing.limitPrice(offer);
+		int unitFillPrice = GeOfferPricing.unitPrice(offer);
+		int qtyFilled = offer.getQuantitySold();
+		int totalQty = offer.getTotalQuantity();
 		FlipOpportunity opp = itemsClient.peekOpportunity(itemId);
 
 		GeSlotTracker.SlotState tracked = slotTracker.snapshot().stream()
@@ -339,28 +344,30 @@ class MySlotsPanel extends SidebarContentPanel
 		{
 			local = OfferPriceAnalyzer.analyze(
 				true,
-				offer.getPrice(),
+				limitPrice,
 				opp,
 				OfferPriceAnalyzer.DEFAULT_THRESHOLD_PERCENT,
 				stagnant,
 				inactive,
-				offer.getQuantitySold(),
-				offer.getTotalQuantity(),
-				stagnationSec
+				qtyFilled,
+				totalQty,
+				stagnationSec,
+				unitFillPrice
 			);
 		}
 		else if (offer.getState() == GrandExchangeOfferState.SELLING)
 		{
 			local = OfferPriceAnalyzer.analyze(
 				false,
-				offer.getPrice(),
+				limitPrice,
 				opp,
 				OfferPriceAnalyzer.DEFAULT_THRESHOLD_PERCENT,
 				stagnant,
 				inactive,
-				offer.getQuantitySold(),
-				offer.getTotalQuantity(),
-				stagnationSec
+				qtyFilled,
+				totalQty,
+				stagnationSec,
+				unitFillPrice
 			);
 		}
 		else
@@ -379,9 +386,10 @@ class MySlotsPanel extends SidebarContentPanel
 			itemId,
 			name,
 			isBuy,
-			offer.getPrice(),
-			offer.getQuantitySold(),
-			offer.getTotalQuantity(),
+			limitPrice,
+			unitFillPrice,
+			qtyFilled,
+			totalQty,
 			inactive,
 			stagnant,
 			analysis
@@ -450,7 +458,8 @@ class MySlotsPanel extends SidebarContentPanel
 		final int itemId;
 		final String itemName;
 		final boolean isBuy;
-		final long offerPrice;
+		final long limitPrice;
+		final long unitFillPrice;
 		final int filled;
 		final int totalQty;
 		final long inactiveSeconds;
@@ -463,7 +472,8 @@ class MySlotsPanel extends SidebarContentPanel
 			int itemId,
 			String itemName,
 			boolean isBuy,
-			long offerPrice,
+			long limitPrice,
+			long unitFillPrice,
 			int filled,
 			int totalQty,
 			long inactiveSeconds,
@@ -476,7 +486,8 @@ class MySlotsPanel extends SidebarContentPanel
 			this.itemId = itemId;
 			this.itemName = itemName;
 			this.isBuy = isBuy;
-			this.offerPrice = offerPrice;
+			this.limitPrice = limitPrice;
+			this.unitFillPrice = unitFillPrice;
 			this.filled = filled;
 			this.totalQty = totalQty;
 			this.inactiveSeconds = inactiveSeconds;
@@ -500,7 +511,8 @@ class MySlotsPanel extends SidebarContentPanel
 			{
 				sb.append(v.slot).append(':')
 					.append(v.state).append(':')
-					.append(v.offerPrice).append(':')
+					.append(v.limitPrice).append(':')
+					.append(v.unitFillPrice).append(':')
 					.append(v.filled).append('/').append(v.totalQty).append(':')
 					.append(v.stagnant).append(':');
 				if (v.analysis != null)

@@ -34,6 +34,11 @@ class ImportPanel extends SidebarContentPanel
 		card.add(PluginUi.cardHint(
 			"Flipping Utilities user? Export CSV from the Stats tab, then import on the web or pick a file below."
 		));
+		card.add(PluginUi.gap(PluginUi.SPACING_SM));
+		card.add(PluginUi.cardHint(
+			"File import requires pairing and sends your export to FlipX (flipx.gg) over HTTPS. "
+				+ "See Privacy in Connection or flipx.gg/privacy."
+		));
 		card.add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		JButton webButton = PluginUi.externalLinkButton("Import on web");

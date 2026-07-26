@@ -16,7 +16,7 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.util.LinkBrowser;
 
-/** Read-only recipe flip opportunities (Ultra+). */
+/** Read-only recipe flip opportunities (Pro+). */
 class RecipeFlipsPanel extends SidebarContentPanel
 {
 	private static final int ROW_HEIGHT = 48;
@@ -115,8 +115,8 @@ class RecipeFlipsPanel extends SidebarContentPanel
 
 		if (!entitlements.isRecipeFlips())
 		{
-			statusLabel.setText("Ultra required");
-			list.add(PluginUi.emptyState("Recipe flips need an Ultra subscription."));
+			statusLabel.setText("Pro required");
+			list.add(PluginUi.emptyState("Recipe flips need a Pro subscription."));
 			revalidate();
 			repaint();
 			return;
@@ -137,8 +137,8 @@ class RecipeFlipsPanel extends SidebarContentPanel
 					list.removeAll();
 					if (ex.getState() == PluginState.UPGRADE_REQUIRED)
 					{
-						statusLabel.setText("Ultra required");
-						list.add(PluginUi.emptyState("Recipe flips need an Ultra subscription."));
+						statusLabel.setText("Pro required");
+						list.add(PluginUi.emptyState("Recipe flips need a Pro subscription."));
 					}
 					else
 					{

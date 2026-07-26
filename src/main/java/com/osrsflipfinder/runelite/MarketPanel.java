@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
@@ -90,6 +92,9 @@ public class MarketPanel extends SidebarContentPanel
 	private volatile boolean suppressSortEvent = false;
 	private String activeCard = CARD_LIST;
 	private String detailReturnCard = CARD_LIST;
+	private ScheduledFuture<?> eliteDetailPoll;
+
+	private static final long ELITE_NETWORK_POLL_MS = 30_000L;
 
 	@Inject
 	MarketPanel(
@@ -336,6 +341,11 @@ public class MarketPanel extends SidebarContentPanel
 
 	private void scheduleDetailItemFetch()
 	{
+		scheduleDetailItemFetch(false);
+	}
+
+	private void scheduleDetailItemFetch(boolean forceRefresh)
+	{
 		if (!CARD_DETAIL.equals(activeCard) || detailItemId == null)
 		{
 			return;
@@ -345,7 +355,7 @@ public class MarketPanel extends SidebarContentPanel
 		{
 			try
 			{
-				itemsClient.fetch(itemId);
+				itemsClient.fetch(itemId, forceRefresh);
 			}
 			catch (IOException ex)
 			{
@@ -727,10 +737,18 @@ public class MarketPanel extends SidebarContentPanel
 
 		if (CARD_DETAIL.equals(activeCard) && detailItemId != null)
 		{
-			FlipOpportunity unified = itemsClient.peekOpportunity(detailItemId);
+			ItemDetailResponse cached = itemsClient.peek(detailItemId);
+			FlipOpportunity unified = cached != null ? cached.getOpportunity() : itemsClient.peekOpportunity(detailItemId);
 			if (unified != null)
 			{
-				detailView.show(unified, FlipXConstants.baseUrl());
+				if (cached != null)
+				{
+					detailView.applyDetail(cached);
+				}
+				else
+				{
+					detailView.show(unified, FlipXConstants.baseUrl());
+				}
 			}
 			else if (opportunities != null)
 			{
@@ -792,6 +810,7 @@ public class MarketPanel extends SidebarContentPanel
 	{
 		activeCard = CARD_LIST;
 		detailItemId = null;
+		stopEliteDetailPoll();
 		detailReturnCard = CARD_LIST;
 		cardStack.showCard(listCard);
 		refreshCardLayout();
@@ -849,6 +868,37 @@ public class MarketPanel extends SidebarContentPanel
 				log.debug("Item detail refresh failed for {}", opp.getId(), ex);
 			}
 		});
+
+		maybeStartEliteDetailPoll();
+	}
+
+	private void maybeStartEliteDetailPoll()
+	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements == null || !entitlements.isElite())
+		{
+			stopEliteDetailPoll();
+			return;
+		}
+		if (eliteDetailPoll != null)
+		{
+			return;
+		}
+		eliteDetailPoll = executorService.scheduleAtFixedRate(
+			() -> scheduleDetailItemFetch(true),
+			ELITE_NETWORK_POLL_MS,
+			ELITE_NETWORK_POLL_MS,
+			TimeUnit.MILLISECONDS
+		);
+	}
+
+	private void stopEliteDetailPoll()
+	{
+		if (eliteDetailPoll != null)
+		{
+			eliteDetailPoll.cancel(false);
+			eliteDetailPoll = null;
+		}
 	}
 
 	private static FlipOpportunity toOpportunity(SlotRecommendation slot)
@@ -876,12 +926,12 @@ public class MarketPanel extends SidebarContentPanel
 		{
 			return;
 		}
-		FlipOpportunity unified = itemsClient.peekOpportunity(itemId);
-		if (unified != null)
+		ItemDetailResponse detail = itemsClient.peek(itemId);
+		if (detail != null && detail.getOpportunity() != null)
 		{
 			SwingUtilities.invokeLater(() ->
 			{
-				detailView.show(unified, FlipXConstants.baseUrl());
+				detailView.applyDetail(detail);
 				syncDetailRefreshUi();
 			});
 		}

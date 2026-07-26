@@ -137,6 +137,19 @@ public class MarketCopilotOverlay extends OverlayPanel
 			.rightColor(Color.WHITE)
 			.build());
 
+		ItemDetailResponse detail = itemsClient.peek(itemId);
+		if (detail != null)
+		{
+			String coopLine = NetworkIntelUi.coopOverlayLine(detail.getNetworkIntel(), opp);
+			if (coopLine != null)
+			{
+				panelComponent.getChildren().add(LineComponent.builder()
+					.left(truncate(coopLine, 38))
+					.leftColor(PluginUi.GOLD_DIM)
+					.build());
+			}
+		}
+
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Qty | ~30m")
 			.right(MarketFormat.qtyLimit(opp.getEstimatedTradableQuantity(), opp.getBuyLimit())
@@ -176,7 +189,41 @@ public class MarketCopilotOverlay extends OverlayPanel
 				.build());
 		}
 
+		if (config.apiKey() != null && !config.apiKey().isBlank())
+		{
+			String refreshLine = CopilotRefreshLabels.pollingLine(
+				opportunitiesClient,
+				itemsClient,
+				true,
+				true
+			);
+			long updatedMs = readOverlayLastUpdatedMs(itemId);
+			String combined = CopilotRefreshLabels.withUpdatedTimestamp(refreshLine, updatedMs);
+			if (combined != null && !combined.isBlank())
+			{
+				panelComponent.getChildren().add(LineComponent.builder()
+					.left(truncate(combined, 42))
+					.leftColor(ColorScheme.LIGHT_GRAY_COLOR)
+					.build());
+			}
+		}
+
 		return super.render(graphics);
+	}
+
+	private long readOverlayLastUpdatedMs(int itemId)
+	{
+		ItemDetailResponse detail = itemsClient.peek(itemId);
+		if (detail != null && detail.getMeta() != null && detail.getMeta().getLastUpdatedMs() > 0)
+		{
+			return detail.getMeta().getLastUpdatedMs();
+		}
+		MarketQueryResponse latest = opportunitiesClient.getLatest();
+		if (latest != null && latest.getMeta() != null)
+		{
+			return latest.getMeta().getLastUpdatedMs();
+		}
+		return 0L;
 	}
 
 	private String resolveHint(FlipOpportunity opp, int itemId)

@@ -21,7 +21,8 @@ class GeSlotRow extends JPanel
 		int itemId,
 		String itemName,
 		boolean isBuy,
-		long offerPrice,
+		long limitPrice,
+		long unitFillPrice,
 		int filled,
 		int totalQty,
 		long inactiveSeconds,
@@ -63,10 +64,7 @@ class GeSlotRow extends JPanel
 		PluginUi.stackLine(body, title);
 
 		JLabel priceLine = new JLabel("<html><div style='width:" + wrap + "px;'>"
-			+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, "Your price ")
-			+ PluginUi.htmlSpan(Color.WHITE, MarketFormat.gp(offerPrice) + " gp")
-			+ PluginUi.htmlSep()
-			+ PluginUi.htmlSpan(PluginUi.TEXT_DIM, filled + "/" + totalQty + " filled")
+			+ formatPriceLine(limitPrice, unitFillPrice, filled, totalQty)
 			+ "</div></html>");
 		priceLine.setFont(FontManager.getRunescapeSmallFont());
 		PluginUi.stackLine(body, priceLine);
@@ -273,6 +271,25 @@ class GeSlotRow extends JPanel
 			default:
 				return PluginUi.WARNING;
 		}
+	}
+
+	private static String formatPriceLine(long limitPrice, long unitFillPrice, int filled, int totalQty)
+	{
+		String fillPart = PluginUi.htmlSpan(PluginUi.TEXT_DIM, filled + "/" + totalQty + " filled");
+		if (filled > 0 && unitFillPrice > 0 && unitFillPrice != limitPrice)
+		{
+			return PluginUi.htmlSpan(PluginUi.TEXT_SOFT, "Limit ")
+				+ PluginUi.htmlSpan(Color.WHITE, MarketFormat.gp(limitPrice) + " gp")
+				+ PluginUi.htmlSep()
+				+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, "Fill avg ")
+				+ PluginUi.htmlSpan(Color.WHITE, MarketFormat.gp(unitFillPrice) + " gp")
+				+ PluginUi.htmlSep()
+				+ fillPart;
+		}
+		return PluginUi.htmlSpan(PluginUi.TEXT_SOFT, "Price ")
+			+ PluginUi.htmlSpan(Color.WHITE, MarketFormat.gp(limitPrice) + " gp")
+			+ PluginUi.htmlSep()
+			+ fillPart;
 	}
 
 	private static String sideLabel(GrandExchangeOfferState state, boolean isBuy)

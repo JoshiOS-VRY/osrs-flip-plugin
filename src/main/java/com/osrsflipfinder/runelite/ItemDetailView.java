@@ -33,6 +33,8 @@ class ItemDetailView extends SidebarContentPanel
 	private final JLabel gpHrLabel = new JLabel(PluginUi.PLACEHOLDER);
 	private final JLabel capitalLabel = new JLabel(PluginUi.PLACEHOLDER);
 	private final JPanel statsPanel = PluginUi.statBlock();
+	private final JPanel networkPanel = PluginUi.statBlock();
+	private final JLabel networkHeaderLabel = PluginUi.caption("Network");
 	private final JButton watchButton = PluginUi.secondaryButton("Add to watchlist");
 	private final JButton openButton = PluginUi.externalLinkButton("Open in web app");
 
@@ -89,6 +91,12 @@ class ItemDetailView extends SidebarContentPanel
 		add(hero);
 		add(PluginUi.gap(PluginUi.SPACING_SM));
 		add(statsPanel);
+		add(PluginUi.gap(PluginUi.SPACING_SM));
+		networkHeaderLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		networkHeaderLabel.setAlignmentX(LEFT_ALIGNMENT);
+		add(networkHeaderLabel);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+		add(networkPanel);
 		add(PluginUi.gap(PluginUi.SPACING_MD));
 
 		watchButton.addActionListener(e -> addToWatchlist());
@@ -125,16 +133,25 @@ class ItemDetailView extends SidebarContentPanel
 		PluginUi.setHeroGridStatValue(capitalLabel, PluginUi.PLACEHOLDER, null);
 
 		statsPanel.removeAll();
-		PluginUi.addStatLine(statsPanel, "Est. buy", PluginUi.PLACEHOLDER);
-		PluginUi.addStatLine(statsPanel, "Est. sell", PluginUi.PLACEHOLDER);
+		PluginUi.addStatLine(statsPanel, "Wiki est. buy", PluginUi.PLACEHOLDER);
+		PluginUi.addStatLine(statsPanel, "Wiki est. sell", PluginUi.PLACEHOLDER);
 		PluginUi.addStatLine(statsPanel, "Score", PluginUi.PLACEHOLDER);
 		PluginUi.finalizeStatBlock(statsPanel);
+		networkPanel.removeAll();
+		PluginUi.finalizeStatBlock(networkPanel);
+		networkHeaderLabel.setVisible(false);
+		networkPanel.setVisible(false);
 
 		watchButton.setEnabled(false);
 		openButton.setEnabled(true);
 	}
 
 	void show(FlipOpportunity opp, String baseUrl)
+	{
+		show(opp, baseUrl, null);
+	}
+
+	void show(FlipOpportunity opp, String baseUrl, NetworkIntelResponse networkIntel)
 	{
 		if (opp == null)
 		{
@@ -151,7 +168,7 @@ class ItemDetailView extends SidebarContentPanel
 		watchButton.setForeground(Color.WHITE);
 		openButton.setEnabled(true);
 
-		populateText(opp);
+		populateText(opp, networkIntel);
 
 		final int itemId = opp.getId();
 		executorService.execute(() -> SwingUtilities.invokeLater(() ->
@@ -163,7 +180,24 @@ class ItemDetailView extends SidebarContentPanel
 		}));
 	}
 
-	private void populateText(FlipOpportunity opp)
+	void applyDetail(ItemDetailResponse detail)
+	{
+		if (detail == null || detail.getOpportunity() == null)
+		{
+			return;
+		}
+		show(detail.getOpportunity(), baseUrl, detail.getNetworkIntel());
+		String networkLine = NetworkIntelUi.networkUpdatedLine(detail.getNetworkIntel());
+		if (networkLine != null)
+		{
+			String existing = refreshTimerLabel.getText();
+			refreshTimerLabel.setText(
+				existing == null || existing.isBlank() ? networkLine : existing + " · " + networkLine
+			);
+		}
+	}
+
+	private void populateText(FlipOpportunity opp, NetworkIntelResponse networkIntel)
 	{
 		setItemName(opp.getName());
 
@@ -197,8 +231,8 @@ class ItemDetailView extends SidebarContentPanel
 		);
 
 		statsPanel.removeAll();
-		PluginUi.addStatLine(statsPanel, "Est. buy", MarketFormat.gp(opp.getEstimatedBuyPrice()));
-		PluginUi.addStatLine(statsPanel, "Est. sell", MarketFormat.gp(opp.getEstimatedSellPrice()));
+		PluginUi.addStatLine(statsPanel, "Wiki est. buy", MarketFormat.gp(opp.getEstimatedBuyPrice()));
+		PluginUi.addStatLine(statsPanel, "Wiki est. sell", MarketFormat.gp(opp.getEstimatedSellPrice()));
 		PluginUi.addStatLine(statsPanel, "Total profit", MarketFormat.gp(opp.getEstimatedProfitAtQuantity()));
 		PluginUi.addStatLine(statsPanel, "Turnover", String.format("%.1fh", opp.getEstimatedTurnoverHours()));
 		PluginUi.addStatLine(statsPanel, "Score", opp.getOpportunityScore() + "/100");
@@ -210,8 +244,29 @@ class ItemDetailView extends SidebarContentPanel
 		);
 		PluginUi.addStatLine(statsPanel, "1h volume", MarketFormat.gp(opp.getOneHourVolume()));
 		PluginUi.finalizeStatBlock(statsPanel);
+
+		boolean hasNetwork = networkIntel != null
+			&& (networkIntel.getSignal() != null
+				|| networkIntel.getDivergence() != null
+				|| networkIntel.getCoopFlipBand() != null
+				|| networkIntel.getNetworkPrices() != null
+				|| networkIntel.getEdgeScore() != null);
+		networkHeaderLabel.setVisible(hasNetwork);
+		networkPanel.setVisible(hasNetwork);
+		if (hasNetwork)
+		{
+			NetworkIntelUi.render(networkPanel, networkIntel, opp);
+		}
+		else
+		{
+			networkPanel.removeAll();
+			PluginUi.finalizeStatBlock(networkPanel);
+		}
+
 		statsPanel.revalidate();
 		statsPanel.repaint();
+		networkPanel.revalidate();
+		networkPanel.repaint();
 		revalidate();
 		repaint();
 	}

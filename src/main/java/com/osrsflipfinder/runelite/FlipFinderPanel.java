@@ -334,6 +334,9 @@ public class FlipFinderPanel extends PluginPanel
 		case SESSION:
 				sessionStatsPanel.updateRefreshTimer(paired);
 				break;
+			case GE_SETUP:
+				geSetupPanel.updateRefreshTimer(paired);
+				break;
 			case RECIPE_FLIPS:
 				recipeFlipsPanel.updateRefreshTimer();
 				break;
@@ -622,9 +625,9 @@ public class FlipFinderPanel extends PluginPanel
 		{
 			return PluginState.NOT_PAIRED;
 		}
-		if (!config.enableUpload() && !config.enableMarketPanel())
+		if (authFailureState == PluginState.UPGRADE_REQUIRED)
 		{
-			return PluginState.NOT_PAIRED;
+			return PluginState.UPGRADE_REQUIRED;
 		}
 		return PluginState.CONNECTED;
 	}

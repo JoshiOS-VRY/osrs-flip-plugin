@@ -30,6 +30,7 @@ public class MarketQueryResponse
 		private String tier;
 		private Long publishedAtMs;
 		private Long nextPublishInMs;
+		private Long nextWikiPublishAtMs;
 		private Long publishPeriodMs;
 		private double phaseConfidence;
 	}

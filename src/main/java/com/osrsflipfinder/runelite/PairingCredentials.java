@@ -6,7 +6,7 @@ import net.runelite.client.config.ConfigManager;
 /** Local pairing state - must match {@link FlipXConstants#baseUrl()}. */
 final class PairingCredentials
 {
-	private static final long PAIRING_GRACE_MS = 15_000L;
+	private static final long PAIRING_GRACE_MS = 60_000L;
 	private static volatile long lastPairSaveMs = 0L;
 
 	private PairingCredentials()

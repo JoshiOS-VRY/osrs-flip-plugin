@@ -4,7 +4,6 @@ package com.osrsflipfinder.runelite;
 final class OfferPriceAnalyzer
 {
 	static final double DEFAULT_THRESHOLD_PERCENT = 1.0;
-	private static final long GE_TAX_CAP = 5_000_000L;
 
 	enum Issue
 	{
@@ -182,11 +181,39 @@ final class OfferPriceAnalyzer
 		long stagnationThresholdSec
 	)
 	{
+		return analyze(
+			isBuy,
+			offerPrice,
+			opp,
+			thresholdPercent,
+			stagnant,
+			inactiveSec,
+			quantityFilled,
+			totalQuantity,
+			stagnationThresholdSec,
+			0
+		);
+	}
+
+	static Analysis analyze(
+		boolean isBuy,
+		long offerPrice,
+		FlipOpportunity opp,
+		double thresholdPercent,
+		boolean stagnant,
+		long inactiveSec,
+		int quantityFilled,
+		int totalQuantity,
+		long stagnationThresholdSec,
+		int unitFillPrice
+	)
+	{
 		if (opp == null || offerPrice <= 0)
 		{
 			return Analysis.none(null, null, null, stagnant, inactiveSec);
 		}
 
+		int itemId = opp.getId();
 		if (opp.isPriceDumped())
 		{
 			long est = isBuy ? opp.getEstimatedBuyPrice() : opp.getEstimatedSellPrice();
@@ -213,7 +240,13 @@ final class OfferPriceAnalyzer
 				return Analysis.none(null, null, opp, stagnant, inactiveSec);
 			}
 			double delta = ((offerPrice - marketBuy) * 100.0) / marketBuy;
-			long netAtOffer = estimateNetPerItem(offerPrice, marketSell);
+			long buyForNet = GeOfferPricing.effectiveBuyForNet(
+				offerPrice,
+				marketBuy,
+				quantityFilled,
+				unitFillPrice
+			);
+			long netAtOffer = estimateNetPerItem(buyForNet, marketSell, itemId);
 
 			if (delta > thresholdPercent)
 			{
@@ -286,7 +319,13 @@ final class OfferPriceAnalyzer
 			return Analysis.none(null, null, opp, stagnant, inactiveSec);
 		}
 		double delta = ((offerPrice - marketSell) * 100.0) / marketSell;
-		long netAtOffer = estimateNetPerItem(marketBuy, offerPrice);
+		long sellForNet = GeOfferPricing.effectiveSellForNet(
+			offerPrice,
+			marketSell,
+			quantityFilled,
+			unitFillPrice
+		);
+		long netAtOffer = estimateNetPerItem(marketBuy, sellForNet, itemId);
 
 		if (delta < -thresholdPercent)
 		{
@@ -571,17 +610,16 @@ final class OfferPriceAnalyzer
 
 	static long estimateNetPerItem(long buyPrice, long sellPrice)
 	{
+		return estimateNetPerItem(buyPrice, sellPrice, 0);
+	}
+
+	static long estimateNetPerItem(long buyPrice, long sellPrice, int itemId)
+	{
 		if (buyPrice <= 0 || sellPrice <= 0 || sellPrice <= buyPrice)
 		{
 			return Long.MIN_VALUE / 2;
 		}
-		return sellPrice - buyPrice - geTax(sellPrice);
-	}
-
-	private static long geTax(long sellPrice)
-	{
-		long tax = (long) Math.floor(sellPrice * 0.02);
-		return Math.min(tax, GE_TAX_CAP);
+		return sellPrice - buyPrice - GeTax.geTaxPerItem(sellPrice, itemId);
 	}
 
 	private static String partialFillNote(int filled, int total)

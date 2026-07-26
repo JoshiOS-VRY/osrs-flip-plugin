@@ -102,7 +102,7 @@ Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; Flip
 | ----- | ------- |
 | `GET /api/plugin/entitlements` | Tier limits that drive the UI (refresh interval, slots, presets, etc.) |
 | `GET /api/plugin/slots/live` | Enriched open GE offers with overbid/undercut badges |
-| `GET /api/plugin/session` | Live session GP/hr and flip stats |
+| `GET /api/plugin/session` | Live session GP/hr and flip stats (server-side P&amp;L after GE tax; uses fill prices from ingest) |
 | `GET /api/plugin/analytics/items` | Session-scoped item profit breakdown (`from`, `limit`) |
 | `POST /api/plugin/import/flipping-utilities` | Import Flipping Utilities JSON history |
 | `GET /api/plugin/recipes/opportunities` | Ranked recipe flip margins (Ultra+) |
@@ -138,6 +138,8 @@ MarketCopilotOverlay  → display-only GE score/profit overlay (Ultra)
 
 Events flush every ~8 seconds or when 50 events are queued.
 
+**P&amp;L and prices:** Ingest sends executed unit price (`spent / qty filled`), not the GE limit price. The **Session** tab reflects that via the API. **My slots** compares your limit to FlipX estimates and shows fill average when partial fills differ; slot alerts use fill-aware net (2% GE tax, same exemptions as the web app).
+
 ## Error handling
 
 | Response | Plugin behavior |
@@ -168,10 +170,13 @@ Full end-to-end test: pair via UI, place GE offers in-game, confirm rows in Supa
 
 ## Privacy
 
-- Only GE offer data for your logged-in account is uploaded.
-- No inventory, bank, or chat data is collected.
-- Upload requires explicit pairing with a code you generate on the web app.
-- Revoke the device at any time from web settings.
+- Network features (GE upload, market, overlays, imports) are opt-in and call FlipX at `https://www.flipx.gg` — see plugin config warnings and [flipx.gg/privacy](https://www.flipx.gg/privacy).
+- When **GE upload** is enabled and you are paired, the plugin sends GE offer events for your logged-in account (and may backfill recent trades from RuneLite’s saved GE history for that profile).
+- Optional **Flipping Utilities** import (web or in-plugin file picker) uploads export files you choose.
+- **Inventory coins** are read locally only to pre-fill market filters; they are not uploaded.
+- No bank, chat, or full inventory data is collected.
+- Pairing requires enabling **GE upload** or **Market panel** first, then a code from the web app.
+- Revoke the device at any time from web settings or **Disconnect** in the plugin.
 
 ## Troubleshooting
 

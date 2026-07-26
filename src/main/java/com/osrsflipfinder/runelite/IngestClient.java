@@ -282,7 +282,10 @@ public class IngestClient
 			requeueFront(batch);
 			consecutiveFailures = 0;
 			retryAfterMs = 0;
-			PairingCredentials.clearIfAuthFailedForKey(configManager, config, e.getApiKeyUsed());
+			if (e.getState() == PluginState.REPAIR_REQUIRED)
+			{
+				PairingCredentials.clearIfAuthFailedForKey(configManager, config, e.getApiKeyUsed());
+			}
 			stateListener.accept(e.getState());
 			errorListener.accept(e.getMessage());
 		}

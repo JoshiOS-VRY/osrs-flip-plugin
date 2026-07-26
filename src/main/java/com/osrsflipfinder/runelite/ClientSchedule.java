@@ -4,7 +4,6 @@ package com.osrsflipfinder.runelite;
 final class ClientSchedule
 {
 	static final double PHASE_CONFIDENCE_THRESHOLD = 0.35;
-	static final int JITTER_MS = 400;
 
 	private ClientSchedule()
 	{
@@ -17,14 +16,64 @@ final class ClientSchedule
 		long nowMs
 	)
 	{
-		if (meta != null
-			&& meta.getPhaseConfidence() >= PHASE_CONFIDENCE_THRESHOLD
-			&& meta.getNextPublishInMs() != null
-			&& meta.getNextPublishInMs() >= 0)
+		if (meta == null)
 		{
-			long jitter = (long) (Math.random() * JITTER_MS);
-			return nowMs + meta.getNextPublishInMs() + publishLeadMs + jitter;
+			return nowMs + Math.max(0, fallbackIntervalMs);
 		}
+		return computeNextFetchAtMs(
+			meta.getNextWikiPublishAtMs(),
+			meta.getNextPublishInMs(),
+			meta.getPhaseConfidence(),
+			publishLeadMs,
+			fallbackIntervalMs,
+			nowMs
+		);
+	}
+
+	static long computeNextFetchAtMs(
+		ItemDetailResponse.ItemDetailMeta meta,
+		long publishLeadMs,
+		long fallbackIntervalMs,
+		long nowMs
+	)
+	{
+		if (meta == null)
+		{
+			return nowMs + Math.max(0, fallbackIntervalMs);
+		}
+		return computeNextFetchAtMs(
+			meta.getNextWikiPublishAtMs(),
+			meta.getNextPublishInMs(),
+			meta.getPhaseConfidence(),
+			publishLeadMs,
+			fallbackIntervalMs,
+			nowMs
+		);
+	}
+
+	private static long computeNextFetchAtMs(
+		Long nextWikiPublishAtMs,
+		Long nextPublishInMs,
+		double phaseConfidence,
+		long publishLeadMs,
+		long fallbackIntervalMs,
+		long nowMs
+	)
+	{
+		if (nextWikiPublishAtMs != null
+			&& nextWikiPublishAtMs > 0
+			&& phaseConfidence >= PHASE_CONFIDENCE_THRESHOLD)
+		{
+			return nextWikiPublishAtMs + publishLeadMs;
+		}
+
+		if (phaseConfidence >= PHASE_CONFIDENCE_THRESHOLD
+			&& nextPublishInMs != null
+			&& nextPublishInMs >= 0)
+		{
+			return nowMs + nextPublishInMs + publishLeadMs;
+		}
+
 		return nowMs + Math.max(0, fallbackIntervalMs);
 	}
 

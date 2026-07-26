@@ -32,4 +32,51 @@ final class GeOfferPricing
 
 		return offer.getPrice();
 	}
+
+	static int limitPrice(GrandExchangeOffer offer)
+	{
+		return offer == null ? 0 : offer.getPrice();
+	}
+
+	/**
+	 * Gross sell price for net P&amp;L when the offer may instant-fill above a low limit.
+	 */
+	static long effectiveSellForNet(
+		long limitPrice,
+		long marketSellEstimate,
+		int quantityFilled,
+		int unitFillPrice
+	)
+	{
+		if (quantityFilled > 0 && unitFillPrice > 0)
+		{
+			return unitFillPrice;
+		}
+		if (marketSellEstimate > 0 && limitPrice > 0 && limitPrice < marketSellEstimate)
+		{
+			return marketSellEstimate;
+		}
+		return limitPrice;
+	}
+
+	/**
+	 * Buy price for net P&amp;L when the offer may instant-fill below a high limit.
+	 */
+	static long effectiveBuyForNet(
+		long limitPrice,
+		long marketBuyEstimate,
+		int quantityFilled,
+		int unitFillPrice
+	)
+	{
+		if (quantityFilled > 0 && unitFillPrice > 0)
+		{
+			return unitFillPrice;
+		}
+		if (marketBuyEstimate > 0 && limitPrice > marketBuyEstimate)
+		{
+			return marketBuyEstimate;
+		}
+		return limitPrice;
+	}
 }

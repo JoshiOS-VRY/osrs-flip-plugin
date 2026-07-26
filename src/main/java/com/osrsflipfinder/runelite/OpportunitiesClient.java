@@ -272,6 +272,11 @@ public class OpportunitiesClient
 	{
 		boolean changed = entitlementsChanged(entitlements, freshEntitlements);
 		entitlements = freshEntitlements;
+		if (freshEntitlements != null)
+		{
+			itemsClient.setRefreshIntervalMs(freshEntitlements.getRefreshIntervalMs());
+			itemsClient.setPublishLeadMs(freshEntitlements.getPublishLeadMs());
+		}
 		if (changed)
 		{
 			for (Consumer<PluginEntitlements> listener : entitlementsListeners)

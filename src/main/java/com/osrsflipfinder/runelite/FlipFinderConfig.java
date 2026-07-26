@@ -78,7 +78,7 @@ public interface FlipFinderConfig extends Config
 	@ConfigItem(
 		keyName = "enableGeOverlay",
 		name = "Enable GE copilot overlay",
-		description = "Show live score and estimated profit for the item in your open Grand Exchange offer (requires pairing + Ultra)",
+		description = "Show live score and estimated profit for the item in your open Grand Exchange offer (requires pairing + Pro)",
 		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
 	)
 	default boolean enableGeOverlay()

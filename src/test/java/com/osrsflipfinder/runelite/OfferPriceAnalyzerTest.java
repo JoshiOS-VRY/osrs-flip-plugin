@@ -121,9 +121,10 @@ public class OfferPriceAnalyzerTest
 			1,
 			true,
 			STAGNATION_SEC * 2 + 60,
-			0,
+			1,
 			8,
-			STAGNATION_SEC
+			STAGNATION_SEC,
+			1500
 		);
 		assertEquals(OfferPriceAnalyzer.Action.ABORT_FLIP, analysis.action);
 		assertTrue(analysis.actionLine.toLowerCase().contains("consider"));
@@ -140,5 +141,16 @@ public class OfferPriceAnalyzerTest
 		);
 		assertNull(analysis.issue);
 		assertEquals(OfferPriceAnalyzer.Action.HOLD, analysis.action);
+	}
+
+	@Test
+	public void estimateNetPerItemAppliesGeTaxLikeWeb()
+	{
+		long buy = 6_710;
+		long sell = 6_810;
+		assertEquals(
+			sell - buy - GeTax.geTaxPerItem(sell, 2),
+			OfferPriceAnalyzer.estimateNetPerItem(buy, sell, 2)
+		);
 	}
 }

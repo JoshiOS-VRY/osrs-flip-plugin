@@ -11,6 +11,7 @@ public class ItemDetailResponse
 	private ItemDetailMeta meta;
 	private List<PriceSnapshot> snapshots;
 	private MarketRegimeSummary marketRegime;
+	private NetworkIntelResponse networkIntel;
 
 	@Data
 	public static class MarketRegimeSummary
@@ -25,6 +26,9 @@ public class ItemDetailResponse
 	{
 		private int chartDays;
 		private long lastUpdatedMs;
+		private Long nextPublishInMs;
+		private Long nextWikiPublishAtMs;
+		private double phaseConfidence;
 	}
 
 	@Data

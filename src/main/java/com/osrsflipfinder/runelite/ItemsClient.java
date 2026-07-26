@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntConsumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -27,6 +28,9 @@ public class ItemsClient
 	private final CopyOnWriteArrayList<IntConsumer> updateListeners = new CopyOnWriteArrayList<>();
 
 	private volatile long refreshIntervalMs = MIN_TTL_MS;
+	private volatile long publishLeadMs = 500L;
+	private volatile long nextWikiRefreshAtMs = 0L;
+	private final AtomicBoolean itemFetchInProgress = new AtomicBoolean(false);
 
 	@Inject
 	ItemsClient(PluginApiClient apiClient, FlipFinderConfig config, LocalCacheStore cacheStore)
@@ -39,6 +43,24 @@ public class ItemsClient
 	void setRefreshIntervalMs(long intervalMs)
 	{
 		this.refreshIntervalMs = Math.max(intervalMs, MIN_TTL_MS);
+	}
+
+	void setPublishLeadMs(long publishLeadMs)
+	{
+		if (publishLeadMs > 0)
+		{
+			this.publishLeadMs = publishLeadMs;
+		}
+	}
+
+	long getNextWikiRefreshAtMs()
+	{
+		return nextWikiRefreshAtMs;
+	}
+
+	boolean isItemFetchInProgress()
+	{
+		return itemFetchInProgress.get();
 	}
 
 	void addUpdateListener(IntConsumer listener)
@@ -78,7 +100,12 @@ public class ItemsClient
 
 	ItemDetailResponse fetch(int itemId) throws IOException
 	{
-		if (!isStale(itemId))
+		return fetch(itemId, false);
+	}
+
+	ItemDetailResponse fetch(int itemId, boolean forceRefresh) throws IOException
+	{
+		if (!forceRefresh && !isStale(itemId))
 		{
 			ItemDetailResponse cached = peek(itemId);
 			if (cached != null)
@@ -88,6 +115,14 @@ public class ItemsClient
 		}
 
 		String cacheKey = "item-" + itemId;
+		if (!itemFetchInProgress.compareAndSet(false, true))
+		{
+			ItemDetailResponse waiting = peek(itemId);
+			if (waiting != null)
+			{
+				return waiting;
+			}
+		}
 		try
 		{
 			ItemDetailResponse response = apiClient.get("/api/plugin/items/" + itemId, ItemDetailResponse.class);
@@ -95,6 +130,7 @@ public class ItemsClient
 			{
 				long updatedAt = response.getMeta() != null ? response.getMeta().getLastUpdatedMs() : 0L;
 				putMemory(itemId, response, updatedAt, true);
+				scheduleWikiRefreshFromItemMeta(response.getMeta());
 				cacheStore.write(cacheKey, response, config);
 			}
 			return response;
@@ -111,6 +147,10 @@ public class ItemsClient
 				return cached.getPayload();
 			}
 			throw ex;
+		}
+		finally
+		{
+			itemFetchInProgress.set(false);
 		}
 	}
 
@@ -129,6 +169,33 @@ public class ItemsClient
 		{
 			mergeOpportunity(opp, updatedAt);
 		}
+
+		if (response.getMeta() != null)
+		{
+			scheduleWikiRefreshFromMarketMeta(response.getMeta());
+		}
+	}
+
+	void scheduleWikiRefreshFromMarketMeta(MarketQueryResponse.Meta meta)
+	{
+		long now = System.currentTimeMillis();
+		nextWikiRefreshAtMs = ClientSchedule.computeNextFetchAtMs(
+			meta,
+			publishLeadMs,
+			refreshIntervalMs,
+			now
+		);
+	}
+
+	private void scheduleWikiRefreshFromItemMeta(ItemDetailResponse.ItemDetailMeta meta)
+	{
+		long now = System.currentTimeMillis();
+		nextWikiRefreshAtMs = ClientSchedule.computeNextFetchAtMs(
+			meta,
+			publishLeadMs,
+			refreshIntervalMs,
+			now
+		);
 	}
 
 	void mergeOpportunity(FlipOpportunity opp, long snapshotUpdatedAtMs)

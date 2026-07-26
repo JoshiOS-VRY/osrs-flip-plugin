@@ -37,10 +37,12 @@ public class GeSlotTracker
 		Instant now = Instant.now();
 		SlotState previous = slots.get(slot);
 		int qtyFilled = offer.getQuantitySold();
+		int unitFill = GeOfferPricing.unitPrice(offer);
 		boolean activity = previous == null
 			|| previous.quantityFilled != qtyFilled
 			|| previous.itemId != offer.getItemId()
-			|| previous.price != offer.getPrice()
+			|| previous.limitPrice != offer.getPrice()
+			|| previous.unitFillPrice != unitFill
 			|| previous.state != state;
 
 		Instant lastActivity = activity ? now : previous != null ? previous.lastActivityAt : now;
@@ -53,6 +55,7 @@ public class GeSlotTracker
 			offer.getItemId(),
 			state,
 			offer.getPrice(),
+			unitFill,
 			offer.getTotalQuantity(),
 			qtyFilled,
 			placedAt,
@@ -77,7 +80,8 @@ public class GeSlotTracker
 		final int slot;
 		final int itemId;
 		final GrandExchangeOfferState state;
-		final int price;
+		final int limitPrice;
+		final int unitFillPrice;
 		final int quantity;
 		final int quantityFilled;
 		final Instant placedAt;
@@ -87,7 +91,8 @@ public class GeSlotTracker
 			int slot,
 			int itemId,
 			GrandExchangeOfferState state,
-			int price,
+			int limitPrice,
+			int unitFillPrice,
 			int quantity,
 			int quantityFilled,
 			Instant placedAt,
@@ -97,7 +102,8 @@ public class GeSlotTracker
 			this.slot = slot;
 			this.itemId = itemId;
 			this.state = state;
-			this.price = price;
+			this.limitPrice = limitPrice;
+			this.unitFillPrice = unitFillPrice;
 			this.quantity = quantity;
 			this.quantityFilled = quantityFilled;
 			this.placedAt = placedAt;

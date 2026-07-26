@@ -35,4 +35,5 @@ public class FlipOpportunity
 	private Double referenceTradingPrice;
 	private Double geGuidePrice;
 	private boolean isPriceDumped;
+	private Double edgeScore;
 }

@@ -7,7 +7,7 @@ This document is the checklist for listing FlipX in the [official RuneLite Plugi
 - [x] **Public GitHub repository** — Plugin Hub only accepts public repos. `JoshiOS-VRY/osrs-flip-plugin` is public.
 - [ ] **Production API live** — Default base URL is `https://www.flipx.gg` (the apex `flipx.gg` is normalized to `www` by the plugin). DNS must resolve before reviewers or users can pair in production.
 - [ ] **Privacy policy** — Published at [https://www.flipx.gg/privacy](https://www.flipx.gg/privacy) (covers plugin data collection).
-- [ ] **CI green** — `./gradlew test shadowJar` passes on `main`/`master`.
+- [x] **CI green** — `./gradlew test shadowJar` passes on `main`/`master` (verify before pinning `commit=`).
 
 ## Repository checklist (already done in this repo)
 
@@ -79,9 +79,10 @@ commit=abc123def4567890abc123def4567890abc123de
 3. Open a PR against `runelite/plugin-hub` **master**.
 4. PR description should include:
    - What the plugin does (GE sync + market browsing).
-   - Link to privacy policy: https://flipx.gg/privacy
+   - Link to privacy policy: https://www.flipx.gg/privacy
    - Confirmation that upload and all network features are opt-in.
    - Confirmation there is no automation.
+   - Note: with GE upload enabled, optional backfill reads RuneLite’s saved GE trade history for the active profile (same data class as live sync).
 
 ### 5. CI and review
 
