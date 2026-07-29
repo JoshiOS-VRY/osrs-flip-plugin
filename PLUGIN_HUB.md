@@ -28,7 +28,7 @@ Reviewers verify the plugin against [Jagex third-party client guidelines](https:
 
 FlipX is designed to pass:
 
-- **No automation** — Does not place offers, click GE buttons, or inject prices.
+- **No automation** — Does not place offers or auto-confirm. GE assist icons trigger the same interface actions as native qty/price controls; you still confirm every offer.
 - **Opt-in data upload** — GE sync disabled by default; user pairs with a web-generated code.
 - **Display-only overlays** — Copilot, charts, stagnation timers, and watchlist hints are read-only.
 - **Third-party server disclosed** — Config warnings on every feature that calls FlipX APIs.

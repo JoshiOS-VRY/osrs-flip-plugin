@@ -42,4 +42,34 @@ final class GeTax
 		}
 		return Math.min((long) Math.floor(sellPrice * GE_TAX_RATE), GE_TAX_CAP);
 	}
+
+	/** Minimum sell list price where net per item is ≥ 0 after tax. */
+	static long breakEvenSellPrice(long buyPrice, int itemId)
+	{
+		if (buyPrice <= 0)
+		{
+			return -1;
+		}
+		if (isTaxExempt(itemId))
+		{
+			return buyPrice;
+		}
+
+		long low = buyPrice;
+		long high = buyPrice + GE_TAX_CAP + Math.max(buyPrice, 1L);
+		while (low < high)
+		{
+			long mid = (low + high) / 2;
+			long net = mid - buyPrice - geTaxPerItem(mid, itemId);
+			if (net >= 0)
+			{
+				high = mid;
+			}
+			else
+			{
+				low = mid + 1;
+			}
+		}
+		return low;
+	}
 }

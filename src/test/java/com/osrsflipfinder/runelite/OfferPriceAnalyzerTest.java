@@ -36,7 +36,8 @@ public class OfferPriceAnalyzerTest
 		);
 		assertEquals(OfferPriceAnalyzer.Issue.BUY_OVERBID, analysis.issue);
 		assertEquals(OfferPriceAnalyzer.Action.WAIT, analysis.action);
-		assertEquals(1000L, analysis.recommendedPrice);
+		assertTrue(analysis.recommendedPrice > 1000L);
+		assertTrue(analysis.recommendedPrice <= 1100L);
 	}
 
 	@Test
@@ -54,7 +55,8 @@ public class OfferPriceAnalyzerTest
 			STAGNATION_SEC
 		);
 		assertEquals(OfferPriceAnalyzer.Action.REPRICE_BUY, analysis.action);
-		assertEquals(1000L, analysis.recommendedPrice);
+		assertTrue(analysis.recommendedPrice > 1000L);
+		assertTrue(analysis.recommendedPrice <= 1100L);
 	}
 
 	@Test
@@ -152,5 +154,27 @@ public class OfferPriceAnalyzerTest
 			sell - buy - GeTax.geTaxPerItem(sell, 2),
 			OfferPriceAnalyzer.estimateNetPerItem(buy, sell, 2)
 		);
+	}
+
+	@Test
+	public void profitableSellOvercutHoldsWithoutLoweringPrice()
+	{
+		long buy = 50_261_190L;
+		long sell = 51_204_282L;
+		FlipOpportunity opp = new FlipOpportunity();
+		opp.setEstimatedBuyPrice(buy);
+		opp.setEstimatedSellPrice(sell);
+		opp.setNetProfitPerItem(OfferPriceAnalyzer.estimateNetPerItem(buy, sell));
+
+		OfferPriceAnalyzer.Analysis analysis = OfferPriceAnalyzer.analyze(
+			false,
+			51_999_999L,
+			opp,
+			OfferPriceAnalyzer.DEFAULT_THRESHOLD_PERCENT
+		);
+		assertNull(analysis.issue);
+		assertEquals(OfferPriceAnalyzer.Action.HOLD, analysis.action);
+		assertTrue(analysis.projectedNetPerItem > 0);
+		assertEquals(51_999_999L, analysis.recommendedPrice);
 	}
 }

@@ -6,7 +6,7 @@ enum SidebarSection
 	CONNECTION("Connection"),
 	MY_SLOTS("Flip manager"),
 	SESSION("Session stats"),
-	MARKET("Market"),
+	MARKET("Flip"),
 	GE_SETUP("GE copilot"),
 	IMPORT("Import history"),
 	RECIPE_FLIPS("Recipe flips");

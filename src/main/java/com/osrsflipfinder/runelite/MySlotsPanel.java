@@ -35,6 +35,7 @@ class MySlotsPanel extends SidebarContentPanel
 	private final GeSlotTracker slotTracker;
 	private final PortfolioClient portfolioClient;
 	private final ItemsClient itemsClient;
+	private final OpportunitiesClient opportunitiesClient;
 	private final FlipFinderConfig config;
 	private final ScheduledExecutorService executorService;
 
@@ -58,6 +59,7 @@ class MySlotsPanel extends SidebarContentPanel
 		GeSlotTracker slotTracker,
 		PortfolioClient portfolioClient,
 		ItemsClient itemsClient,
+		OpportunitiesClient opportunitiesClient,
 		FlipFinderConfig config,
 		ScheduledExecutorService executorService
 	)
@@ -68,6 +70,7 @@ class MySlotsPanel extends SidebarContentPanel
 		this.slotTracker = slotTracker;
 		this.portfolioClient = portfolioClient;
 		this.itemsClient = itemsClient;
+		this.opportunitiesClient = opportunitiesClient;
 		this.config = config;
 		this.executorService = executorService;
 
@@ -240,6 +243,7 @@ class MySlotsPanel extends SidebarContentPanel
 				view.inactiveSeconds,
 				view.stagnant,
 				view.analysis,
+				view.breakEvenSell,
 				itemManager
 			));
 			rows.add(PluginUi.gap(PluginUi.SPACING_XS));
@@ -292,6 +296,15 @@ class MySlotsPanel extends SidebarContentPanel
 		if (active == 0)
 		{
 			PluginUi.setMultilineCaption(statusLabel, "Place offers in-game - updates every few seconds");
+			return;
+		}
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements == null || !entitlements.isPluginSync())
+		{
+			PluginUi.setMultilineCaption(
+				statusLabel,
+				"Local GE tracking only · upgrade to Pro on flipx.gg for portfolio sync"
+			);
 			return;
 		}
 		if (portfolioClient.isSlotsOffline() && portfolioClient.getSlotsCachedAt() != null)
@@ -380,6 +393,16 @@ class MySlotsPanel extends SidebarContentPanel
 			OfferPriceAnalyzer.mergePreferLocal(local, enriched)
 		);
 
+		long breakEvenSell = computeBreakEvenSell(
+			offer.getState(),
+			isBuy,
+			limitPrice,
+			unitFillPrice,
+			qtyFilled,
+			opp,
+			itemId
+		);
+
 		return new SlotView(
 			slot,
 			offer.getState(),
@@ -392,8 +415,43 @@ class MySlotsPanel extends SidebarContentPanel
 			totalQty,
 			inactive,
 			stagnant,
-			analysis
+			analysis,
+			breakEvenSell
 		);
+	}
+
+	private static long computeBreakEvenSell(
+		GrandExchangeOfferState state,
+		boolean isBuy,
+		long limitPrice,
+		long unitFillPrice,
+		int quantityFilled,
+		FlipOpportunity opp,
+		int itemId
+	)
+	{
+		long buyBasis = 0;
+		if (state == GrandExchangeOfferState.SELLING)
+		{
+			if (opp != null && opp.getEstimatedBuyPrice() > 0)
+			{
+				buyBasis = opp.getEstimatedBuyPrice();
+			}
+		}
+		else if (isBuy)
+		{
+			buyBasis = GeOfferPricing.effectiveBuyForNet(
+				limitPrice,
+				opp != null ? opp.getEstimatedBuyPrice() : 0,
+				quantityFilled,
+				(int) unitFillPrice
+			);
+		}
+		if (buyBasis <= 0)
+		{
+			return -1;
+		}
+		return GeTax.breakEvenSellPrice(buyBasis, itemId);
 	}
 
 	private void prefetchMarketPrices(List<SlotView> views)
@@ -465,6 +523,7 @@ class MySlotsPanel extends SidebarContentPanel
 		final long inactiveSeconds;
 		final boolean stagnant;
 		final OfferPriceAnalyzer.Analysis analysis;
+		final long breakEvenSell;
 
 		SlotView(
 			int slot,
@@ -478,7 +537,8 @@ class MySlotsPanel extends SidebarContentPanel
 			int totalQty,
 			long inactiveSeconds,
 			boolean stagnant,
-			OfferPriceAnalyzer.Analysis analysis
+			OfferPriceAnalyzer.Analysis analysis,
+			long breakEvenSell
 		)
 		{
 			this.slot = slot;
@@ -493,6 +553,7 @@ class MySlotsPanel extends SidebarContentPanel
 			this.inactiveSeconds = inactiveSeconds;
 			this.stagnant = stagnant;
 			this.analysis = analysis;
+			this.breakEvenSell = breakEvenSell;
 		}
 
 		static Comparator<SlotView> alertFirst()

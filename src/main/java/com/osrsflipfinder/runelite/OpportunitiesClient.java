@@ -75,6 +75,17 @@ public class OpportunitiesClient
 		this.executorService = executorService;
 	}
 
+	/** Current market query (filters / preset / sort). */
+	MarketQueryRequest getQuery()
+	{
+		return query;
+	}
+
+	static boolean sameQuery(MarketQueryRequest a, MarketQueryRequest b)
+	{
+		return queriesEqual(a, b);
+	}
+
 	void setDataListener(Consumer<MarketQueryResponse> listener)
 	{
 		this.dataListener = listener != null ? listener : data -> {};

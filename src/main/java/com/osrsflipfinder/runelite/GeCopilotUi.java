@@ -118,7 +118,7 @@ final class GeCopilotUi
 
 		JLabel gpHr = new JLabel();
 		gpHr.setForeground(PluginUi.GOLD);
-		long hr = opp.getEstimatedProfitPerHour();
+		long hr = FlipCopilotPresenter.estimatedGpPerHour(opp);
 		PluginUi.setHeroGridStatValue(
 			gpHr,
 			MarketFormat.gp(hr),
@@ -149,6 +149,12 @@ final class GeCopilotUi
 			FlipCopilotPresenter.buyPriceColor());
 		PluginUi.addStatLine(block, "Sell offer price", MarketFormat.gp(opp.getEstimatedSellPrice()),
 			FlipCopilotPresenter.sellPriceColor());
+		long breakEven = GeTax.breakEvenSellPrice(opp.getEstimatedBuyPrice(), opp.getId());
+		if (breakEven > 0)
+		{
+			PluginUi.addStatLine(block, "Break-even sell", MarketFormat.gp(breakEven),
+				ColorScheme.LIGHT_GRAY_COLOR);
+		}
 		long spread = opp.getEstimatedSellPrice() - opp.getEstimatedBuyPrice();
 		PluginUi.addStatLine(block, "Gross spread", MarketFormat.gp(spread), ColorScheme.LIGHT_GRAY_COLOR);
 		PluginUi.finalizeStatBlock(block);

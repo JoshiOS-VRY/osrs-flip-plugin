@@ -87,6 +87,37 @@ public interface FlipFinderConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "enableGePriceAssist",
+		name = "Enable FlipX GE assist buttons",
+		description = "GE setup panel: FlipX icon on quantity (buy limit, buy offers) and on Guide price (FlipX buy/sell price). Chatbox: same prices and buy limit on quantity step. Elite uses network medians when available.",
+		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
+	)
+	default boolean enableGePriceAssist()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "enableGeSlotHighlights",
+		name = "Highlight GE slot price alerts",
+		description = "Colored borders on GE slot tabs when an offer is undercut, overbid, or needs a reprice (display-only; no automation)."
+	)
+	default boolean enableGeSlotHighlights()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "enableGeSlotTooltips",
+		name = "FlipX tooltip on GE slots",
+		description = "Show FlipX flip economics when hovering GE slot tabs on the main offer grid (display-only)."
+	)
+	default boolean enableGeSlotTooltips()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "marketPresetId",
 		name = "Market preset",
 		description = "Last selected Market quick preset",
@@ -126,6 +157,17 @@ public interface FlipFinderConfig extends Config
 		hidden = true
 	)
 	default boolean marketDiscountOnly()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "marketDeepDiscountOnly",
+		name = "Deep discount only",
+		description = "Persisted market filter",
+		hidden = true
+	)
+	default boolean marketDeepDiscountOnly()
 	{
 		return false;
 	}
@@ -274,6 +316,17 @@ public interface FlipFinderConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "slotOptDeepDiscountOnly",
+		name = "Slot opt deep discount only",
+		description = "Persisted slot optimizer filter",
+		hidden = true
+	)
+	default boolean slotOptDeepDiscountOnly()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "slotOptDumpedOnly",
 		name = "Slot opt dumped only",
 		description = "Persisted slot optimizer filter",
@@ -390,17 +443,6 @@ public interface FlipFinderConfig extends Config
 	default int tradeStagnationMinutes()
 	{
 		return 15;
-	}
-
-	@ConfigItem(
-		keyName = "enableGeChartOverlay",
-		name = "Enable GE price chart overlay",
-		description = "Show a mini price chart on the Grand Exchange offer setup screen",
-		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
-	)
-	default boolean enableGeChartOverlay()
-	{
-		return false;
 	}
 
 	@ConfigItem(

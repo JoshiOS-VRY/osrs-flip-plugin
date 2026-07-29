@@ -28,6 +28,7 @@ class MarketFiltersPanel
 
 	private final JCheckBox hideLowConfidence = PluginUi.checkBox("Hide low confidence", false);
 	private final JCheckBox discountOnly = PluginUi.checkBox("Discount only", false);
+	private final JCheckBox deepDiscountOnly = PluginUi.checkBox("Deep discount only", false);
 	private final JCheckBox dumpedOnly = PluginUi.checkBox("Dumped only", false);
 	private final JCheckBox useInventoryCoins = PluginUi.checkBox("Limit to inventory coins", false);
 	private final JTextField maxCapitalField = PluginUi.textField("");
@@ -100,6 +101,7 @@ class MarketFiltersPanel
 
 		hideLowConfidence.setEnabled(showAdvanced);
 		discountOnly.setEnabled(showAdvanced);
+		deepDiscountOnly.setEnabled(showAdvanced);
 		dumpedOnly.setEnabled(showAdvanced);
 
 		maxCapitalField.setEnabled(enabled);
@@ -124,6 +126,7 @@ class MarketFiltersPanel
 		}
 		return FlipFinderConfigIO.getBoolean(configManager, "marketHideLowConfidence", false)
 			|| FlipFinderConfigIO.getBoolean(configManager, "marketDiscountOnly", false)
+			|| FlipFinderConfigIO.getBoolean(configManager, "marketDeepDiscountOnly", false)
 			|| FlipFinderConfigIO.getBoolean(configManager, "marketDumpedOnly", false)
 			|| hasText(FlipFinderConfigIO.getString(configManager, "marketMaxCapital", ""))
 			|| FlipFinderConfigIO.getBoolean(configManager, "marketUseInventoryCoins", false)
@@ -168,6 +171,7 @@ class MarketFiltersPanel
 		{
 			filters.setHideLowConfidence(hideLowConfidence.isSelected() ? true : null);
 			filters.setDiscountOnly(discountOnly.isSelected() ? true : null);
+			filters.setDeepDiscountOnly(deepDiscountOnly.isSelected() ? true : null);
 			filters.setDumpedOnly(dumpedOnly.isSelected() ? true : null);
 
 			Long maxCapital = parseLong(maxCapitalField.getText());
@@ -211,22 +215,12 @@ class MarketFiltersPanel
 		}
 		membersCombo.setSelectedIndex(index);
 
-		if (filters.getHideLowConfidence() != null)
-		{
-			hideLowConfidence.setSelected(filters.getHideLowConfidence());
-		}
-		if (filters.getDiscountOnly() != null)
-		{
-			discountOnly.setSelected(filters.getDiscountOnly());
-		}
-		if (filters.getDumpedOnly() != null)
-		{
-			dumpedOnly.setSelected(filters.getDumpedOnly());
-		}
-		if (filters.getMaxCapital() != null)
-		{
-			maxCapitalField.setText(formatLong(filters.getMaxCapital()));
-		}
+		hideLowConfidence.setSelected(Boolean.TRUE.equals(filters.getHideLowConfidence()));
+		discountOnly.setSelected(Boolean.TRUE.equals(filters.getDiscountOnly()));
+		deepDiscountOnly.setSelected(Boolean.TRUE.equals(filters.getDeepDiscountOnly()));
+		dumpedOnly.setSelected(Boolean.TRUE.equals(filters.getDumpedOnly()));
+
+		maxCapitalField.setText(formatLong(filters.getMaxCapital()));
 		useInventoryCoins.setSelected(false);
 		minTotalProfitField.setText(formatLong(filters.getMinTotalProfit()));
 		minGpPerHourField.setText(formatLong(filters.getMinGpPerHour()));
@@ -242,6 +236,7 @@ class MarketFiltersPanel
 		suppressEvents = true;
 		hideLowConfidence.setSelected(false);
 		discountOnly.setSelected(false);
+		deepDiscountOnly.setSelected(false);
 		dumpedOnly.setSelected(false);
 		useInventoryCoins.setSelected(false);
 		maxCapitalField.setText("");
@@ -283,10 +278,16 @@ class MarketFiltersPanel
 		advancedBody.add(PluginUi.gap(PluginUi.SPACING_MD));
 		advancedBody.add(PluginUi.caption("Quality"));
 		advancedBody.add(PluginUi.gap(PluginUi.SPACING_XS));
-		JPanel quality = PluginUi.checkboxGroup(hideLowConfidence, discountOnly, dumpedOnly);
+		JPanel quality = PluginUi.checkboxGroup(
+			hideLowConfidence,
+			discountOnly,
+			deepDiscountOnly,
+			dumpedOnly
+		);
 		hideLowConfidence.setToolTipText("Hides items below the engine low-confidence threshold.");
 		discountOnly.setToolTipText("Passive est. buy is below the in-game GE guide price.");
-		dumpedOnly.setToolTipText("Trading below 33% of GE guide and crashed under recent 1h norms.");
+		deepDiscountOnly.setToolTipText("Both passive est. buy and est. sell are below the GE guide price.");
+		dumpedOnly.setToolTipText(DumpDetectionCopy.FILTER_TOOLTIP);
 		advancedBody.add(quality);
 		advancedBody.add(PluginUi.gap(PluginUi.SPACING_SM));
 		advancedBody.add(PluginUi.labeledField("Max capital", maxCapitalField));
@@ -325,6 +326,7 @@ class MarketFiltersPanel
 
 		hideLowConfidence.addActionListener(e -> persistAndNotify());
 		discountOnly.addActionListener(e -> persistAndNotify());
+		deepDiscountOnly.addActionListener(e -> persistAndNotify());
 		dumpedOnly.addActionListener(e -> persistAndNotify());
 		useInventoryCoins.addActionListener(e -> persistAndNotify());
 		membersCombo.addActionListener(e -> persistAndNotify());
@@ -360,6 +362,9 @@ class MarketFiltersPanel
 		);
 		discountOnly.setSelected(
 			FlipFinderConfigIO.getBoolean(configManager, "marketDiscountOnly", false)
+		);
+		deepDiscountOnly.setSelected(
+			FlipFinderConfigIO.getBoolean(configManager, "marketDeepDiscountOnly", false)
 		);
 		dumpedOnly.setSelected(
 			FlipFinderConfigIO.getBoolean(configManager, "marketDumpedOnly", false)
@@ -402,6 +407,11 @@ class MarketFiltersPanel
 			FlipFinderConfig.GROUP,
 			"marketDiscountOnly",
 			discountOnly.isSelected()
+		);
+		configManager.setConfiguration(
+			FlipFinderConfig.GROUP,
+			"marketDeepDiscountOnly",
+			deepDiscountOnly.isSelected()
 		);
 		configManager.setConfiguration(
 			FlipFinderConfig.GROUP,

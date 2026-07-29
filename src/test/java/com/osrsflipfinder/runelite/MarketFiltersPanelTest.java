@@ -46,6 +46,7 @@ public class MarketFiltersPanelTest
 		MarketQueryRequest.MarketFilters filters = panel.buildFilters();
 		assertNull(filters.getHideLowConfidence());
 		assertNull(filters.getDiscountOnly());
+		assertNull(filters.getDeepDiscountOnly());
 		assertNull(filters.getDumpedOnly());
 		assertNull(filters.getMaxCapital());
 		assertTrue(panel.hasIgnoredAdvancedFilters());
@@ -65,7 +66,32 @@ public class MarketFiltersPanelTest
 		MarketQueryRequest.MarketFilters filters = panel.buildFilters();
 		assertTrue(filters.getHideLowConfidence());
 		assertTrue(filters.getDiscountOnly());
+		assertFalse(filters.getDeepDiscountOnly());
 		assertFalse(panel.hasIgnoredAdvancedFilters());
 		assertNull(panel.getEntitlementNotice());
+	}
+
+	@Test
+	public void applyFromFiltersClearsQualityFlagsOmittedFromBookmark()
+	{
+		Map<String, String> saved = new HashMap<>();
+		saved.put("marketDeepDiscountOnly", "true");
+		saved.put("marketDiscountOnly", "true");
+		saved.put("marketMembersFilter", "all");
+		MarketFiltersPanel panel = new MarketFiltersPanel(
+			configManagerWith(saved),
+			mock(CoinBalanceService.class),
+			() -> {}
+		);
+		panel.setAdvancedEnabled(true);
+
+		MarketQueryRequest.MarketFilters bookmarkFilters = new MarketQueryRequest.MarketFilters();
+		bookmarkFilters.setDiscountOnly(true);
+
+		panel.applyFromFilters(bookmarkFilters);
+
+		MarketQueryRequest.MarketFilters built = panel.buildFilters();
+		assertTrue(built.getDiscountOnly());
+		assertNull(built.getDeepDiscountOnly());
 	}
 }

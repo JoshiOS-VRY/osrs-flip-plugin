@@ -21,11 +21,15 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
  * Display-only Grand Exchange copilot: when an offer is being set up, shows the
  * current item's live score and estimated flip economics. Read-only - never
  * injects prices, fills fields, or simulates clicks (Jagex/Hub compliance).
+ *
+ * <p>Keep this panel sparse — long copy belongs in the FlipX sidebar GE setup tab.
  */
 @Slf4j
 public class MarketCopilotOverlay extends OverlayPanel
 {
 	private static final int PANEL_WIDTH = 300;
+	private static final int TITLE_MAX_CHARS = 18;
+	private static final int REFRESH_MAX_CHARS = 24;
 	private static final Color PANEL_BG = new Color(15, 17, 21, 215);
 
 	private final Client client;
@@ -38,6 +42,9 @@ public class MarketCopilotOverlay extends OverlayPanel
 	private final AtomicBoolean fetchInProgress = new AtomicBoolean(false);
 	private volatile int pendingItemId = -1;
 	private volatile boolean ultraBlocked = false;
+	private volatile int copilotMissItemId = -1;
+	private volatile long copilotMissUntilMs = 0L;
+	private static final long COPILOT_MISS_COOLDOWN_MS = 60_000L;
 
 	@Inject
 	MarketCopilotOverlay(
@@ -86,18 +93,23 @@ public class MarketCopilotOverlay extends OverlayPanel
 
 		if (itemsClient.isStale(itemId))
 		{
-			maybeFetch(itemId);
+			long now = System.currentTimeMillis();
+			if (itemId != copilotMissItemId || now >= copilotMissUntilMs)
+			{
+				maybeFetch(itemId);
+			}
 		}
 
 		FlipOpportunity opp = itemsClient.peekOpportunity(itemId);
+		ItemDetailResponse detail = itemsClient.peek(itemId);
 		if (opp == null)
 		{
 			panelComponent.getChildren().add(TitleComponent.builder()
-				.text("FlipX copilot")
+				.text("FlipX")
 				.color(ColorScheme.BRAND_ORANGE)
 				.build());
 			panelComponent.getChildren().add(LineComponent.builder()
-				.left("Loading...")
+				.left("Loading…")
 				.leftColor(ColorScheme.LIGHT_GRAY_COLOR)
 				.build());
 			return super.render(graphics);
@@ -106,12 +118,12 @@ public class MarketCopilotOverlay extends OverlayPanel
 		FlipCopilotPresenter.Verdict verdict = FlipCopilotPresenter.verdict(opp);
 
 		panelComponent.getChildren().add(TitleComponent.builder()
-			.text(truncate(opp.getName(), 24))
+			.text(truncate(opp.getName(), TITLE_MAX_CHARS))
 			.color(Color.WHITE)
 			.build());
 
 		panelComponent.getChildren().add(LineComponent.builder()
-			.left(FlipCopilotPresenter.verdictLabel(verdict))
+			.left(FlipCopilotPresenter.verdictLabelOverlay(verdict))
 			.leftColor(FlipCopilotPresenter.verdictColor(verdict))
 			.right(FlipCopilotPresenter.scoreLineCompact(opp))
 			.rightColor(PluginUi.GOLD_DIM)
@@ -119,126 +131,79 @@ public class MarketCopilotOverlay extends OverlayPanel
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Net")
-			.right(MarketFormat.signedGp(opp.getNetProfitPerItem()))
-			.rightColor(opp.getNetProfitPerItem() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE)
+			.right(MarketFormat.signedGp(DisplayPriceResolver.resolveNetProfit(detail)))
+			.rightColor(DisplayPriceResolver.resolveNetProfit(detail) >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE)
 			.build());
 
 		panelComponent.getChildren().add(LineComponent.builder()
-			.left("ROI | GP/hr")
-			.right(MarketFormat.percent(opp.getNetRoiPercent()) + " | "
-				+ MarketFormat.gp(opp.getEstimatedProfitPerHour()))
+			.left("ROI")
+			.right(MarketFormat.percent(DisplayPriceResolver.resolveNetRoi(detail)))
 			.rightColor(ColorScheme.GRAND_EXCHANGE_ALCH)
 			.build());
 
+		GeAssistPricing.PriceSource buySource =
+			DisplayPriceResolver.resolveBuySource(detail, entitlements);
+		GeAssistPricing.PriceSource sellSource =
+			DisplayPriceResolver.resolveSellSource(detail, entitlements);
+
 		panelComponent.getChildren().add(LineComponent.builder()
-			.left("Buy | Sell")
-			.right(MarketFormat.gp(opp.getEstimatedBuyPrice()) + " | "
-				+ MarketFormat.gp(opp.getEstimatedSellPrice()))
-			.rightColor(Color.WHITE)
+			.left(DisplayPriceResolver.overlayBuyLabel(buySource))
+			.right(MarketFormat.gp(DisplayPriceResolver.resolveBuyPrice(detail, entitlements)))
+			.rightColor(FlipCopilotPresenter.buyPriceColor())
 			.build());
 
-		ItemDetailResponse detail = itemsClient.peek(itemId);
-		if (detail != null)
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left(DisplayPriceResolver.overlaySellLabel(sellSource))
+			.right(MarketFormat.gp(DisplayPriceResolver.resolveSellPrice(detail, entitlements)))
+			.rightColor(FlipCopilotPresenter.sellPriceColor())
+			.build());
+
+		long breakEven = GeTax.breakEvenSellPrice(
+			DisplayPriceResolver.resolveBuyPrice(detail, entitlements),
+			opp.getId()
+		);
+		if (breakEven > 0)
 		{
-			String coopLine = NetworkIntelUi.coopOverlayLine(detail.getNetworkIntel(), opp);
-			if (coopLine != null)
-			{
-				panelComponent.getChildren().add(LineComponent.builder()
-					.left(truncate(coopLine, 38))
-					.leftColor(PluginUi.GOLD_DIM)
-					.build());
-			}
+			panelComponent.getChildren().add(LineComponent.builder()
+				.left("BE sell")
+				.right(MarketFormat.gp(breakEven))
+				.rightColor(ColorScheme.LIGHT_GRAY_COLOR)
+				.build());
 		}
 
 		panelComponent.getChildren().add(LineComponent.builder()
-			.left("Qty | ~30m")
+			.left("Qty | 30m")
 			.right(MarketFormat.qtyLimit(opp.getEstimatedTradableQuantity(), opp.getBuyLimit())
 				+ " | " + MarketFormat.signedGp(opp.getEstimatedProfit30m()))
 			.rightColor(ColorScheme.LIGHT_GRAY_COLOR)
 			.build());
 
-		panelComponent.getChildren().add(LineComponent.builder()
-			.left("Fill | 1h vol")
-			.right(FlipCopilotPresenter.formatTurnover(opp.getEstimatedTurnoverHours())
-				+ " | " + MarketFormat.gp(opp.getOneHourVolume()))
-			.rightColor(ColorScheme.LIGHT_GRAY_COLOR)
-			.build());
-
-		String hint = resolveHint(opp, itemId);
-		if (hint != null)
+		String alert = FlipCopilotPresenter.overlayAlertLine(opp, 22);
+		if (alert != null)
 		{
 			panelComponent.getChildren().add(LineComponent.builder()
-				.left(truncate(hint, 36))
-				.leftColor(opp.isPriceDumped() ? PluginUi.NEGATIVE : PluginUi.WARNING)
-				.build());
-		}
-		else if (opp.isPriceDumped())
-		{
-			panelComponent.getChildren().add(LineComponent.builder()
-				.left("Dump vs hourly norm")
-				.leftColor(PluginUi.NEGATIVE)
+				.left(alert)
+				.leftColor(opp.isPriceDumped() || opp.getNetProfitPerItem() <= 0
+					? PluginUi.NEGATIVE
+					: PluginUi.WARNING)
 				.build());
 		}
 
-		CopilotItem copilot = copilotClient.peek(itemId);
-		if (copilot != null && copilot.getRiskWarning() != null && !copilot.getRiskWarning().isBlank())
+		String refreshLine = CopilotRefreshLabels.pollingLine(
+			opportunitiesClient,
+			itemsClient,
+			true,
+			true
+		);
+		if (refreshLine != null && !refreshLine.isBlank())
 		{
 			panelComponent.getChildren().add(LineComponent.builder()
-				.left(truncate(copilot.getRiskWarning(), 38))
-				.leftColor(PluginUi.WARNING)
+				.left(truncate(refreshLine, REFRESH_MAX_CHARS))
+				.leftColor(ColorScheme.LIGHT_GRAY_COLOR)
 				.build());
-		}
-
-		if (config.apiKey() != null && !config.apiKey().isBlank())
-		{
-			String refreshLine = CopilotRefreshLabels.pollingLine(
-				opportunitiesClient,
-				itemsClient,
-				true,
-				true
-			);
-			long updatedMs = readOverlayLastUpdatedMs(itemId);
-			String combined = CopilotRefreshLabels.withUpdatedTimestamp(refreshLine, updatedMs);
-			if (combined != null && !combined.isBlank())
-			{
-				panelComponent.getChildren().add(LineComponent.builder()
-					.left(truncate(combined, 42))
-					.leftColor(ColorScheme.LIGHT_GRAY_COLOR)
-					.build());
-			}
 		}
 
 		return super.render(graphics);
-	}
-
-	private long readOverlayLastUpdatedMs(int itemId)
-	{
-		ItemDetailResponse detail = itemsClient.peek(itemId);
-		if (detail != null && detail.getMeta() != null && detail.getMeta().getLastUpdatedMs() > 0)
-		{
-			return detail.getMeta().getLastUpdatedMs();
-		}
-		MarketQueryResponse latest = opportunitiesClient.getLatest();
-		if (latest != null && latest.getMeta() != null)
-		{
-			return latest.getMeta().getLastUpdatedMs();
-		}
-		return 0L;
-	}
-
-	private String resolveHint(FlipOpportunity opp, int itemId)
-	{
-		String hint = FlipCopilotPresenter.repriceHint(opp);
-		if (hint != null)
-		{
-			return hint;
-		}
-		CopilotItem item = copilotClient.peek(itemId);
-		if (item != null && item.getRepriceHint() != null && !item.getRepriceHint().isBlank())
-		{
-			return item.getRepriceHint();
-		}
-		return null;
 	}
 
 	private static String truncate(String text, int max)
@@ -251,8 +216,8 @@ public class MarketCopilotOverlay extends OverlayPanel
 		{
 			return text;
 		}
-		int keep = Math.max(0, max - 3);
-		return text.substring(0, keep) + "...";
+		int keep = Math.max(0, max - 1);
+		return text.substring(0, keep) + "…";
 	}
 
 	private void maybeFetch(int itemId)
@@ -267,6 +232,8 @@ public class MarketCopilotOverlay extends OverlayPanel
 			try
 			{
 				copilotClient.fetch(itemId);
+				copilotMissItemId = -1;
+				copilotMissUntilMs = 0L;
 			}
 			catch (PluginApiException e)
 			{
@@ -278,6 +245,8 @@ public class MarketCopilotOverlay extends OverlayPanel
 			}
 			catch (IOException e)
 			{
+				copilotMissItemId = itemId;
+				copilotMissUntilMs = System.currentTimeMillis() + COPILOT_MISS_COOLDOWN_MS;
 				log.debug("Copilot fetch failed", e);
 			}
 			finally

@@ -21,15 +21,13 @@ public class PluginEntitlements
 	private boolean advancedFilters;
 	private boolean volumeEmphasis;
 	private boolean copilotApi;
+	private boolean pluginSync;
 	private int watchlistMaxItems;
 	private int itemChartDays;
 	private String crowdSaturation;
 	private String fillProbability;
-	private boolean marketFlow;
 	private boolean portfolio;
 	private boolean recipeFlips;
 	private long portfolioRefreshIntervalMs;
 	private boolean cloudSync;
-	private boolean networkDivergence;
-	private boolean personalizedEdgeScore;
 }

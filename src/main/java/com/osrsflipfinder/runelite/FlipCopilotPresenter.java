@@ -63,6 +63,77 @@ final class FlipCopilotPresenter
 		}
 	}
 
+	/** Verdict text for the small GE overlay (fits one column). */
+	static String verdictLabelOverlay(Verdict verdict)
+	{
+		switch (verdict)
+		{
+			case STRONG:
+				return "Strong";
+			case OK:
+				return "Decent";
+			case WEAK:
+				return "Careful";
+			case AVOID:
+			default:
+				return "Skip";
+		}
+	}
+
+	/**
+	 * At most one short alert for the GE overlay — full hints live in the sidebar.
+	 * {@code maxLen} includes room for ellipsis when truncated.
+	 */
+	static String overlayAlertLine(FlipOpportunity opp, int maxLen)
+	{
+		if (opp == null || maxLen < 4)
+		{
+			return null;
+		}
+		String line;
+		if (opp.isPriceDumped())
+		{
+			line = "Dump vs norm";
+		}
+		else if (opp.getNetProfitPerItem() <= 0)
+		{
+			line = "Loss after tax";
+		}
+		else if (opp.getEstimatedSellPrice() <= opp.getEstimatedBuyPrice())
+		{
+			line = "Sell below buy";
+		}
+		else
+		{
+			long spread = opp.getEstimatedSellPrice() - opp.getEstimatedBuyPrice();
+			if (opp.getEstimatedBuyPrice() > 0)
+			{
+				double spreadPct = spread * 100.0 / opp.getEstimatedBuyPrice();
+				if (spreadPct < 0.5)
+				{
+					line = "Tight spread";
+				}
+				else if (opp.getEstimatedTurnoverHours() > 6)
+				{
+					line = "Slow fill";
+				}
+				else
+				{
+					return null;
+				}
+			}
+			else
+			{
+				return null;
+			}
+		}
+		if (line.length() <= maxLen)
+		{
+			return line;
+		}
+		return line.substring(0, Math.max(0, maxLen - 3)) + "...";
+	}
+
 	static Color verdictColor(Verdict verdict)
 	{
 		switch (verdict)
@@ -171,6 +242,26 @@ final class FlipCopilotPresenter
 			return String.format("%.1fh fill est.", hours);
 		}
 		return String.format("%.0fh fill est.", hours);
+	}
+
+	static long estimatedGpPerHour(FlipOpportunity opp)
+	{
+		if (opp == null)
+		{
+			return 0L;
+		}
+		long hr = Math.round(opp.getEstimatedProfitPerHour());
+		if (hr > 0)
+		{
+			return hr;
+		}
+		long atLimit = opp.getEstimatedProfitAtQuantity();
+		double turnover = opp.getEstimatedTurnoverHours();
+		if (atLimit > 0 && turnover > 0 && Double.isFinite(turnover))
+		{
+			return Math.round(atLimit / turnover);
+		}
+		return 0L;
 	}
 
 	static Color buyPriceColor()

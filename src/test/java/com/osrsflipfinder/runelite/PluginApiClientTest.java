@@ -1,6 +1,7 @@
 package com.osrsflipfinder.runelite;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import java.io.IOException;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -58,6 +59,40 @@ public class PluginApiClientTest
 		assertEquals("ultra", entitlements.getTier());
 		assertEquals(500, entitlements.getMaxOpportunities());
 		assertEquals("Bearer osrs_test", server.takeRequest().getHeader("Authorization"));
+	}
+
+	@Test
+	public void marketOpportunityRequiresWholeGpForLongFields() throws IOException
+	{
+		Gson gson = new Gson();
+		String fractional30m =
+			"{\"opportunities\":[{\"id\":1,\"name\":\"Test\",\"members\":true,"
+				+ "\"estimatedBuyPrice\":1000,\"estimatedSellPrice\":1100,\"netProfitPerItem\":100,"
+				+ "\"netRoiPercent\":10,\"opportunityScore\":50,\"confidenceScore\":0.9,"
+				+ "\"estimatedProfitAtQuantity\":1000,\"estimatedProfit30m\":103.5,"
+				+ "\"estimatedProfitPerHour\":207.4,\"estimatedCapitalRequired\":10000,"
+				+ "\"estimatedTurnoverHours\":1.2,\"estimatedTradableQuantity\":10,"
+				+ "\"fiveMinuteVolume\":20,\"oneHourVolume\":100}]}";
+		try
+		{
+			gson.fromJson(fractional30m, MarketQueryResponse.class);
+			fail("Expected JsonSyntaxException for fractional estimatedProfit30m");
+		}
+		catch (JsonSyntaxException expected)
+		{
+			// Gson maps long fields strictly — API must send whole GP.
+		}
+
+		String wholeGp =
+			"{\"opportunities\":[{\"id\":1,\"name\":\"Test\",\"members\":true,"
+				+ "\"estimatedBuyPrice\":1000,\"estimatedSellPrice\":1100,\"netProfitPerItem\":100,"
+				+ "\"netRoiPercent\":10,\"opportunityScore\":50,\"confidenceScore\":0.9,"
+				+ "\"estimatedProfitAtQuantity\":1000,\"estimatedProfit30m\":104,"
+				+ "\"estimatedProfitPerHour\":207.4,\"estimatedCapitalRequired\":10000,"
+				+ "\"estimatedTurnoverHours\":1.2,\"estimatedTradableQuantity\":10,"
+				+ "\"fiveMinuteVolume\":20,\"oneHourVolume\":100}]}";
+		MarketQueryResponse parsed = gson.fromJson(wholeGp, MarketQueryResponse.class);
+		assertEquals(104L, parsed.getOpportunities().get(0).getEstimatedProfit30m());
 	}
 
 	@Test

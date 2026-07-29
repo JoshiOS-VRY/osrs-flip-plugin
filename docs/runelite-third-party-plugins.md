@@ -148,8 +148,8 @@ These patterns align with what hub review typically wants for GE-related tools:
 
 | Pattern | FlipX approach |
 | ------- | -------------- |
-| No automation | Observes GE state; overlays are **display-only**; no menu injection, clicks, or filling GE fields |
-| Opt-in network | Upload, market, copilot, chart, watchlist hints default **off**; RuneLite **IP warnings** on enabling |
+| No automation | Overlays are display-only; optional **GE assist icons** use the same GE widget actions you could click yourself (Enter quantity, Enter price, qty +/-). You still **Confirm** every offer — nothing is placed automatically |
+| Opt-in network | Upload, market, copilot, watchlist hints default **off**; RuneLite **IP warnings** on enabling |
 | Pairing gate | User must enable upload **or** market in config (with warnings) before **Connect** sends data |
 | Third-party API | Fixed production host; privacy policy; open source |
 | Standard build | `build=standard`, `compileOnly` RuneLite client, no extra runtime deps in Gradle |

@@ -41,6 +41,7 @@ public class IngestClient
 	private final OkHttpClient httpClient;
 	private final FlipFinderConfig config;
 	private final ConfigManager configManager;
+	private final OpportunitiesClient opportunitiesClient;
 	private final ScheduledExecutorService executorService;
 	private final Gson gson;
 	private final ConcurrentLinkedQueue<IngestGeEvent> queue = new ConcurrentLinkedQueue<>();
@@ -60,6 +61,7 @@ public class IngestClient
 		OkHttpClient httpClient,
 		FlipFinderConfig config,
 		ConfigManager configManager,
+		OpportunitiesClient opportunitiesClient,
 		ScheduledExecutorService executorService,
 		Gson gson
 	)
@@ -67,6 +69,7 @@ public class IngestClient
 		this.httpClient = httpClient;
 		this.config = config;
 		this.configManager = configManager;
+		this.opportunitiesClient = opportunitiesClient;
 		this.executorService = executorService;
 		this.gson = gson;
 	}
@@ -125,7 +128,12 @@ public class IngestClient
 
 	boolean isConfigured()
 	{
-		return config.enableUpload() && !config.apiKey().isBlank();
+		if (!config.enableUpload() || config.apiKey().isBlank())
+		{
+			return false;
+		}
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		return entitlements != null && entitlements.isPluginSync();
 	}
 
 	int getQueueSize()

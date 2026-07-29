@@ -3,6 +3,7 @@ package com.osrsflipfinder.runelite;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
@@ -92,9 +93,6 @@ public class MarketPanel extends SidebarContentPanel
 	private volatile boolean suppressSortEvent = false;
 	private String activeCard = CARD_LIST;
 	private String detailReturnCard = CARD_LIST;
-	private ScheduledFuture<?> eliteDetailPoll;
-
-	private static final long ELITE_NETWORK_POLL_MS = 30_000L;
 
 	@Inject
 	MarketPanel(
@@ -237,14 +235,14 @@ public class MarketPanel extends SidebarContentPanel
 				onSearchChanged();
 			}
 		});
-		searchField.setToolTipText("Filter by item name or ID");
+		searchField.setToolTipText("Filter the flip list by name or ID");
 
 		JPanel browse = PluginUi.verticalStack(
 			PluginUi.labeledField("Quick preset", presetCombo),
 			marketBookmarksBar,
 			PluginUi.labeledField("Sort by", sortCombo),
 			PluginUi.indented(sortDescCheck),
-			PluginUi.labeledField("Search", searchField)
+			PluginUi.labeledField("Filter list", searchField)
 		);
 		card.add(PluginUi.formCard(browse));
 		card.add(PluginUi.gap(PluginUi.SPACING_MD));
@@ -276,6 +274,15 @@ public class MarketPanel extends SidebarContentPanel
 	void setScrollToTop(Runnable scrollToTop)
 	{
 		this.scrollToTop = scrollToTop != null ? scrollToTop : () -> {};
+	}
+
+	/** Open item detail from catalog search (any tradable item). */
+	void openItemFromCatalog(int itemId, String itemName)
+	{
+		FlipOpportunity stub = new FlipOpportunity();
+		stub.setId(itemId);
+		stub.setName(itemName != null && !itemName.isBlank() ? itemName : ("Item " + itemId));
+		showDetail(stub, CARD_LIST);
 	}
 
 	void setActive(boolean active)
@@ -541,8 +548,28 @@ public class MarketPanel extends SidebarContentPanel
 	private void requestMarketRefresh()
 	{
 		updateFilterNotice();
-		showLoadingState();
-		opportunitiesClient.setQuery(buildQuery());
+		MarketQueryRequest next = buildQuery();
+		boolean sameQuery = OpportunitiesClient.sameQuery(opportunitiesClient.getQuery(), next);
+
+		if (sameQuery)
+		{
+			MarketQueryResponse cached = opportunitiesClient.getLatest();
+			if (cached != null && !opportunitiesClient.isFetchInProgress())
+			{
+				renderData(cached);
+			}
+			else
+			{
+				showLoadingState();
+			}
+		}
+		else
+		{
+			showLoadingState();
+		}
+
+		opportunitiesClient.setQuery(next);
+		opportunitiesClient.requestImmediateRefresh();
 	}
 
 	private void showLoadingState()
@@ -636,45 +663,38 @@ public class MarketPanel extends SidebarContentPanel
 	{
 		marketBookmarksBar.setActiveBookmarkId(bookmark.getId());
 
+		int presetIndex = 0;
 		String presetId = bookmark.getPresetId();
-		if (presetId != null && !"all".equals(presetId))
+		if (presetId != null)
 		{
-			int index = 0;
 			for (int i = 0; i < PRESET_IDS.length; i++)
 			{
 				if (PRESET_IDS[i].equals(presetId))
 				{
-					index = i;
+					presetIndex = i;
 					break;
 				}
 			}
-			selectPresetWithoutClear(index);
-			if (bookmark.getFilters() != null)
-			{
-				filtersPanel.applyFromFilters(bookmark.getFilters());
-				String search = bookmark.getFilters().getSearch();
-				searchField.setText(search != null ? search : "");
-			}
 		}
-		else
+		selectPresetWithoutClear(presetIndex);
+
+		if (bookmark.getFilters() != null)
 		{
-			selectPresetWithoutClear(0);
-			if (bookmark.getFilters() != null)
-			{
-				filtersPanel.applyFromFilters(bookmark.getFilters());
-				String search = bookmark.getFilters().getSearch();
-				searchField.setText(search != null ? search : "");
-			}
-			else
-			{
-				filtersPanel.clearAll();
-				searchField.setText("");
-			}
-			if (bookmark.getSort() != null && !bookmark.getSort().isEmpty())
-			{
-				applySortDescriptor(bookmark.getSort().get(0));
-			}
+			filtersPanel.applyFromFilters(bookmark.getFilters());
+			String search = bookmark.getFilters().getSearch();
+			searchField.setText(search != null ? search : "");
 		}
+		else if (presetIndex == 0)
+		{
+			filtersPanel.clearAll();
+			searchField.setText("");
+		}
+
+		if (presetIndex == 0 && bookmark.getSort() != null && !bookmark.getSort().isEmpty())
+		{
+			applySortDescriptor(bookmark.getSort().get(0));
+		}
+
 		updateSortControlsEnabled();
 		requestMarketRefresh();
 	}
@@ -712,6 +732,14 @@ public class MarketPanel extends SidebarContentPanel
 
 	private void renderData(MarketQueryResponse response)
 	{
+		if (response == null)
+		{
+			statusLabel.setText("Market data unavailable");
+			statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+			clearMarketList();
+			return;
+		}
+
 		updateFilterNotice();
 
 		listContainer.removeAll();
@@ -810,7 +838,6 @@ public class MarketPanel extends SidebarContentPanel
 	{
 		activeCard = CARD_LIST;
 		detailItemId = null;
-		stopEliteDetailPoll();
 		detailReturnCard = CARD_LIST;
 		cardStack.showCard(listCard);
 		refreshCardLayout();
@@ -869,36 +896,6 @@ public class MarketPanel extends SidebarContentPanel
 			}
 		});
 
-		maybeStartEliteDetailPoll();
-	}
-
-	private void maybeStartEliteDetailPoll()
-	{
-		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
-		if (entitlements == null || !entitlements.isElite())
-		{
-			stopEliteDetailPoll();
-			return;
-		}
-		if (eliteDetailPoll != null)
-		{
-			return;
-		}
-		eliteDetailPoll = executorService.scheduleAtFixedRate(
-			() -> scheduleDetailItemFetch(true),
-			ELITE_NETWORK_POLL_MS,
-			ELITE_NETWORK_POLL_MS,
-			TimeUnit.MILLISECONDS
-		);
-	}
-
-	private void stopEliteDetailPoll()
-	{
-		if (eliteDetailPoll != null)
-		{
-			eliteDetailPoll.cancel(false);
-			eliteDetailPoll = null;
-		}
 	}
 
 	private static FlipOpportunity toOpportunity(SlotRecommendation slot)

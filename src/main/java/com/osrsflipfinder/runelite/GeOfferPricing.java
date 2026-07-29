@@ -45,7 +45,7 @@ final class GeOfferPricing
 		long limitPrice,
 		long marketSellEstimate,
 		int quantityFilled,
-		int unitFillPrice
+		long unitFillPrice
 	)
 	{
 		if (quantityFilled > 0 && unitFillPrice > 0)
@@ -66,7 +66,7 @@ final class GeOfferPricing
 		long limitPrice,
 		long marketBuyEstimate,
 		int quantityFilled,
-		int unitFillPrice
+		long unitFillPrice
 	)
 	{
 		if (quantityFilled > 0 && unitFillPrice > 0)

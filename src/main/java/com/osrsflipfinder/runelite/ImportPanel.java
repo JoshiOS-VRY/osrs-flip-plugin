@@ -16,15 +16,22 @@ class ImportPanel extends SidebarContentPanel
 {
 	private final FlipFinderConfig config;
 	private final ImportClient importClient;
+	private final OpportunitiesClient opportunitiesClient;
 	private final ScheduledExecutorService executorService;
 
 	private final JLabel resultLabel = PluginUi.caption(" ");
 
 	@Inject
-	ImportPanel(FlipFinderConfig config, ImportClient importClient, ScheduledExecutorService executorService)
+	ImportPanel(
+		FlipFinderConfig config,
+		ImportClient importClient,
+		OpportunitiesClient opportunitiesClient,
+		ScheduledExecutorService executorService
+	)
 	{
 		this.config = config;
 		this.importClient = importClient;
+		this.opportunitiesClient = opportunitiesClient;
 		this.executorService = executorService;
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -60,6 +67,13 @@ class ImportPanel extends SidebarContentPanel
 
 	private void chooseFile()
 	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements == null || !entitlements.isPluginSync())
+		{
+			resultLabel.setText("Pro required for plugin import — upgrade on flipx.gg/pricing");
+			return;
+		}
+
 		JFileChooser chooser = new JFileChooser();
 		chooser.setDialogTitle("Select Flipping Utilities export");
 		chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(

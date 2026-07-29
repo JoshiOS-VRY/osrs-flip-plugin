@@ -60,21 +60,31 @@ final class ClientSchedule
 		long nowMs
 	)
 	{
+		long fallback = nowMs + Math.max(0, fallbackIntervalMs);
+
 		if (nextWikiPublishAtMs != null
 			&& nextWikiPublishAtMs > 0
 			&& phaseConfidence >= PHASE_CONFIDENCE_THRESHOLD)
 		{
-			return nextWikiPublishAtMs + publishLeadMs;
+			long aligned = nextWikiPublishAtMs + publishLeadMs;
+			if (aligned > nowMs)
+			{
+				return aligned;
+			}
 		}
 
 		if (phaseConfidence >= PHASE_CONFIDENCE_THRESHOLD
 			&& nextPublishInMs != null
 			&& nextPublishInMs >= 0)
 		{
+			if (nextPublishInMs <= publishLeadMs)
+			{
+				return fallback;
+			}
 			return nowMs + nextPublishInMs + publishLeadMs;
 		}
 
-		return nowMs + Math.max(0, fallbackIntervalMs);
+		return fallback;
 	}
 
 	static long msUntilNextFetch(long nextFetchAtMs, long nowMs)

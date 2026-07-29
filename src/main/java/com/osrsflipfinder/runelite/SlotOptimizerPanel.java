@@ -389,6 +389,10 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		{
 			request.setExcludeItemIds(occupancy.getOccupiedItemIds());
 		}
+		if (!occupancy.getEmptySlotIndices().isEmpty())
+		{
+			request.setEmptySlotIndices(occupancy.getEmptySlotIndices());
+		}
 		int sortIndex = Math.max(0, sortCombo.getSelectedIndex());
 		request.setRankSort(SORT_IDS[sortIndex], sortDescCheck.isSelected());
 		return request;
@@ -402,7 +406,8 @@ class SlotOptimizerPanel extends SidebarContentPanel
 			+ ":" + sortDescCheck.isSelected()
 			+ ":" + maxCapital
 			+ ":ge:" + occupancy.getOccupiedSlots()
-			+ ":" + occupancy.getOccupiedItemIds();
+			+ ":" + occupancy.getOccupiedItemIds()
+			+ ":" + occupancy.getEmptySlotIndices();
 	}
 
 	private void restoreSortControls()
@@ -513,7 +518,7 @@ class SlotOptimizerPanel extends SidebarContentPanel
 			{
 				summaryPanel.add(PluginUi.hint(
 					lastOccupancy.getOccupiedSlots()
-						+ " slot(s) in use. Items already in GE are hidden here."));
+						+ " GE slot(s) in use. In-GE items excluded."));
 				summaryPanel.add(PluginUi.gap(PluginUi.SPACING_XS));
 			}
 			summaryPanel.add(PluginUi.hint("Tap a row for item detail."));
@@ -595,7 +600,7 @@ class SlotOptimizerPanel extends SidebarContentPanel
 		text.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		text.setOpaque(false);
 
-		String title = "Slot " + slot.getSlotNumber() + " - " + slot.getItemName();
+		String title = "GE slot " + slot.getSlotNumber() + " - " + slot.getItemName();
 		JLabel name = PluginUi.truncatedLabel(title, 24);
 		name.setForeground(Color.WHITE);
 		name.setFont(FontManager.getRunescapeSmallFont());

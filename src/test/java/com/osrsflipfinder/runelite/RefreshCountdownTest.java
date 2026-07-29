@@ -35,6 +35,17 @@ public class RefreshCountdownTest
 			true,
 			false
 		);
+		assertEquals("Next refresh in 0s", text);
+	}
+
+	@Test
+	public void formatPollingRefreshingWhenFetchInProgress()
+	{
+		String text = RefreshCountdown.formatPolling(
+			System.currentTimeMillis() + 60_000,
+			true,
+			true
+		);
 		assertEquals("Refreshing…", text);
 	}
 

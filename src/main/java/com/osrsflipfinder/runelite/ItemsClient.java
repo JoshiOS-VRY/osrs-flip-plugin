@@ -1,6 +1,10 @@
 package com.osrsflipfinder.runelite;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -122,6 +126,7 @@ public class ItemsClient
 			{
 				return waiting;
 			}
+			throw new IOException("Item fetch already in progress");
 		}
 		try
 		{
@@ -152,6 +157,24 @@ public class ItemsClient
 		{
 			itemFetchInProgress.set(false);
 		}
+	}
+
+	List<ItemSearchResponse.ItemSearchHit> searchItems(String query, int limit) throws IOException
+	{
+		String trimmed = query != null ? query.trim() : "";
+		if (trimmed.length() < 2)
+		{
+			return Collections.emptyList();
+		}
+		int capped = Math.min(Math.max(limit, 1), 25);
+		String encoded = URLEncoder.encode(trimmed, StandardCharsets.UTF_8);
+		String path = "/api/plugin/items/search?q=" + encoded + "&limit=" + capped;
+		ItemSearchResponse response = apiClient.get(path, ItemSearchResponse.class);
+		if (response == null || response.getItems() == null)
+		{
+			return Collections.emptyList();
+		}
+		return response.getItems();
 	}
 
 	void mergeFromMarketResponse(MarketQueryResponse response)

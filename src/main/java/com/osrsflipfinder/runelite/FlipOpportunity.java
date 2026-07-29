@@ -24,7 +24,8 @@ public class FlipOpportunity
 
 	private long estimatedProfitAtQuantity;
 	private long estimatedProfit30m;
-	private long estimatedProfitPerHour;
+	/** API may send fractional GP/hr from turnover math; Gson needs double, not long. */
+	private double estimatedProfitPerHour;
 	private long estimatedCapitalRequired;
 	private double estimatedTurnoverHours;
 	private long estimatedTradableQuantity;
@@ -36,4 +37,5 @@ public class FlipOpportunity
 	private Double geGuidePrice;
 	private boolean isPriceDumped;
 	private Double edgeScore;
+	private DisplayPricesResponse displayPrices;
 }

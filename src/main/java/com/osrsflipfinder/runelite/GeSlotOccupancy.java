@@ -19,6 +19,8 @@ final class GeSlotOccupancy
 		int occupiedSlots;
 		int emptySlots;
 		List<Integer> occupiedItemIds;
+		/** Zero-based GE indices that are free (EMPTY). */
+		List<Integer> emptySlotIndices;
 	}
 
 	static Snapshot read(Client client)
@@ -26,6 +28,7 @@ final class GeSlotOccupancy
 		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
 		int occupied = 0;
 		List<Integer> itemIds = new ArrayList<>();
+		List<Integer> emptyIndices = new ArrayList<>();
 		if (offers != null)
 		{
 			for (int slot = 0; slot < Math.min(GE_SLOT_COUNT, offers.length); slot++)
@@ -33,6 +36,7 @@ final class GeSlotOccupancy
 				GeSlotSnapshot snap = GeSlotSnapshot.from(slot, offers[slot]);
 				if (snap.isEmpty())
 				{
+					emptyIndices.add(slot);
 					continue;
 				}
 				occupied++;
@@ -43,8 +47,21 @@ final class GeSlotOccupancy
 				}
 			}
 		}
+		else
+		{
+			for (int slot = 0; slot < GE_SLOT_COUNT; slot++)
+			{
+				emptyIndices.add(slot);
+			}
+		}
 		int empty = Math.max(0, GE_SLOT_COUNT - occupied);
-		return new Snapshot(GE_SLOT_COUNT, occupied, empty, Collections.unmodifiableList(itemIds));
+		return new Snapshot(
+			GE_SLOT_COUNT,
+			occupied,
+			empty,
+			Collections.unmodifiableList(itemIds),
+			Collections.unmodifiableList(emptyIndices)
+		);
 	}
 
 	private GeSlotOccupancy()

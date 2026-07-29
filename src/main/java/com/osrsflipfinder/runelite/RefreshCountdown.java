@@ -17,18 +17,18 @@ final class RefreshCountdown
 		{
 			return "Refresh paused (switch to this tab to resume)";
 		}
-		if (fetchInProgress || nextRefreshAtMs <= 0)
+		if (fetchInProgress)
 		{
 			return "Refreshing…";
+		}
+		if (nextRefreshAtMs <= 0)
+		{
+			return "Next refresh in 0s";
 		}
 		long remainingMs = ClientSchedule.msUntilNextFetch(
 			nextRefreshAtMs,
 			System.currentTimeMillis()
 		);
-		if (remainingMs <= 0)
-		{
-			return "Refreshing…";
-		}
 		long sec = formatNextRefreshCountdownSeconds(remainingMs);
 		return String.format("Next refresh in %ds", sec);
 	}

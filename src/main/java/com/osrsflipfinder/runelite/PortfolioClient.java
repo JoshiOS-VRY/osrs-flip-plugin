@@ -1,8 +1,6 @@
 package com.osrsflipfinder.runelite;
 
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
@@ -34,6 +32,12 @@ public class PortfolioClient
 
 	@Getter
 	private volatile SlotsLiveResponse latestSlots;
+	@Getter
+	private volatile PortfolioPeriod portfolioPeriod = PortfolioPeriod.DEFAULT;
+	@Getter
+	private volatile PortfolioPeriod sessionStatsPeriod;
+	@Getter
+	private volatile PortfolioPeriod sessionItemsPeriod;
 	@Getter
 	private volatile LiveSessionStats latestSession;
 	@Getter
@@ -107,6 +111,42 @@ public class PortfolioClient
 	void setSessionItemsListener(Consumer<List<ItemPerformanceRow>> listener)
 	{
 		this.sessionItemsListener = listener != null ? listener : items -> {};
+	}
+
+	void setPortfolioPeriod(PortfolioPeriod period)
+	{
+		PortfolioPeriod next = period != null ? period : PortfolioPeriod.DEFAULT;
+		if (next == portfolioPeriod)
+		{
+			return;
+		}
+		portfolioPeriod = next;
+		latestSession = null;
+		sessionStatsPeriod = null;
+		latestSessionItems = Collections.emptyList();
+		sessionItemsPeriod = null;
+		sessionOffline = false;
+		sessionItemsOffline = false;
+		sessionListener.accept(null);
+		sessionItemsListener.accept(Collections.emptyList());
+		nextRefreshAtMs = 0;
+		if (active)
+		{
+			executorService.execute(this::tick);
+		}
+	}
+
+	boolean isSessionStatsForPeriod(PortfolioPeriod period)
+	{
+		return period != null
+			&& period == portfolioPeriod
+			&& period == sessionStatsPeriod
+			&& latestSession != null;
+	}
+
+	boolean isSessionItemsForPeriod(PortfolioPeriod period)
+	{
+		return period != null && period == portfolioPeriod && period == sessionItemsPeriod;
 	}
 
 	void start()
@@ -211,26 +251,32 @@ public class PortfolioClient
 
 		try
 		{
-			LiveSessionStats session = apiClient.get("/api/plugin/session?account=all", LiveSessionStats.class);
+			PortfolioPeriod period = portfolioPeriod;
+			String sessionPath = "/api/plugin/session?" + period.toApiQuery();
+			LiveSessionStats session = apiClient.get(sessionPath, LiveSessionStats.class);
 			latestSession = session;
+			sessionStatsPeriod = period;
 			sessionOffline = false;
 			sessionCachedAt = null;
-			cacheStore.write("session", session, config);
+			cacheStore.write(period.sessionCacheKey(), session, config);
 			sessionListener.accept(session);
-			refreshSessionItems(session);
+			refreshSessionItems(period);
 		}
 		catch (IOException ex)
 		{
 			sessionOffline = true;
-			LocalCacheStore.CachedEntry<LiveSessionStats> cached = cacheStore.read("session", LiveSessionStats.class, config);
+			PortfolioPeriod period = portfolioPeriod;
+			LocalCacheStore.CachedEntry<LiveSessionStats> cached =
+				cacheStore.read(period.sessionCacheKey(), LiveSessionStats.class, config);
 			if (cached != null)
 			{
 				latestSession = cached.getPayload();
+				sessionStatsPeriod = period;
 				sessionCachedAt = cached.getCachedAt();
 				sessionListener.accept(latestSession);
 			}
 			LocalCacheStore.CachedEntry<ItemPerformanceResponse> itemsCached =
-				cacheStore.read("session-items", ItemPerformanceResponse.class, config);
+				cacheStore.read(period.sessionItemsCacheKey(), ItemPerformanceResponse.class, config);
 			if (itemsCached != null)
 			{
 				latestSessionItems = safeItems(itemsCached.getPayload());
@@ -289,39 +335,33 @@ public class PortfolioClient
 		});
 	}
 
-	private void refreshSessionItems(LiveSessionStats session)
+	private void refreshSessionItems(PortfolioPeriod period)
 	{
-		String startedAt = session != null ? session.getStartedAt() : null;
-		if (startedAt == null || startedAt.isBlank())
+		if (period == null)
 		{
-			latestSessionItems = Collections.emptyList();
-			sessionItemsOffline = false;
-			sessionItemsCachedAt = null;
-			sessionItemsListener.accept(latestSessionItems);
-			return;
+			period = PortfolioPeriod.DEFAULT;
 		}
 
 		try
 		{
-			String from = URLEncoder.encode(startedAt, StandardCharsets.UTF_8.name());
-			ItemPerformanceResponse response = apiClient.get(
-				"/api/plugin/analytics/items?account=all&limit=15&from=" + from,
-				ItemPerformanceResponse.class
-			);
+			String path = "/api/plugin/analytics/items?" + period.toApiQuery() + "&limit=15";
+			ItemPerformanceResponse response = apiClient.get(path, ItemPerformanceResponse.class);
 			latestSessionItems = safeItems(response);
+			sessionItemsPeriod = period;
 			sessionItemsOffline = false;
 			sessionItemsCachedAt = null;
-			cacheStore.write("session-items", response, config);
+			cacheStore.write(period.sessionItemsCacheKey(), response, config);
 			sessionItemsListener.accept(latestSessionItems);
 		}
 		catch (IOException ex)
 		{
 			sessionItemsOffline = true;
 			LocalCacheStore.CachedEntry<ItemPerformanceResponse> cached =
-				cacheStore.read("session-items", ItemPerformanceResponse.class, config);
+				cacheStore.read(period.sessionItemsCacheKey(), ItemPerformanceResponse.class, config);
 			if (cached != null)
 			{
 				latestSessionItems = safeItems(cached.getPayload());
+				sessionItemsPeriod = period;
 				sessionItemsCachedAt = cached.getCachedAt();
 				sessionItemsListener.accept(latestSessionItems);
 			}

@@ -12,6 +12,7 @@ public class ItemDetailResponse
 	private List<PriceSnapshot> snapshots;
 	private MarketRegimeSummary marketRegime;
 	private NetworkIntelResponse networkIntel;
+	private DisplayPricesResponse displayPrices;
 
 	@Data
 	public static class MarketRegimeSummary

@@ -89,11 +89,13 @@ Duplicate events are deduplicated client-side and server-side via `idempotencyKe
 
 The sidebar panel includes: **Connection** (pairing), **Import history** (Flipping Utilities JSON), **My slots** (live GE dashboard), **Session** (GP/hr widget), **GE setup** (item detail while configuring offers), **Recipe flips** (Ultra+), and **Market** (opportunities, slot optimizer, watchlist).
 
-Optional GE overlays (plugin settings, all display-only):
+Optional GE features (plugin settings):
 
 - **Slot stagnation timers** — time since last slot activity
-- **GE copilot overlay** — score, margins, insta buy/sell, reprice hints (Ultra)
-- **GE price chart overlay** — mini sparkline on offer setup
+- **GE copilot overlay** — score, margins, insta buy/sell, reprice hints (Pro)
+- **GE slot tooltips** — hover a slot tab on the main GE grid for FlipX score, margins, and reprice hints (display-only; on by default)
+- **GE slot highlights** — colored borders when an offer needs attention
+- **FlipX GE price buttons** — clickable FlipX buy/sell in the GE price chatbox (Pro; you still confirm)
 - **Watchlist GE hint** — type `1` in GE search to see favorites list
 
 Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; FlipX adds cloud analytics and market discovery FU does not provide.
@@ -102,13 +104,14 @@ Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; Flip
 | ----- | ------- |
 | `GET /api/plugin/entitlements` | Tier limits that drive the UI (refresh interval, slots, presets, etc.) |
 | `GET /api/plugin/slots/live` | Enriched open GE offers with overbid/undercut badges |
-| `GET /api/plugin/session` | Live session GP/hr and flip stats (server-side P&amp;L after GE tax; uses fill prices from ingest) |
-| `GET /api/plugin/analytics/items` | Session-scoped item profit breakdown (`from`, `limit`) |
+| `GET /api/plugin/session` | Portfolio stats for a time period (`period`: `session`, `1d`, `1w`, `1m`, `1y`, `all`; also `liveSession`, `from`, `to`, `days` as on web). Session includes live slot P&amp;L; other periods are completed flips only. |
+| `GET /api/plugin/analytics/items` | Item profit breakdown for the same period query params as session (`from`, `to`, `liveSession`, `limit`) |
 | `POST /api/plugin/import/flipping-utilities` | Import Flipping Utilities JSON history |
 | `GET /api/plugin/recipes/opportunities` | Ranked recipe flip margins (Ultra+) |
 | `POST /api/plugin/market/query` | Filtered/ranked opportunities + summary + top ROI movers |
+| `GET /api/plugin/items/search` | Item catalog search (paired Free + Pro) |
 | `GET /api/plugin/items/{id}` | Single-item detail (with tier-scoped chart snapshots) |
-| `POST /api/plugin/slots/optimize` | Best GP/slot-hour fill for your tier's slots |
+| `POST /api/plugin/slots/optimize` | Best GP/slot-hour fill for your tier's slots (Pro+) |
 | `GET`/`POST /api/plugin/watchlists*` | List and add/remove watchlist items |
 | `GET`/`POST`/`DELETE /api/plugin/bookmarks*` | Saved filter presets synced with the web app |
 | `POST /api/ingest/ge-events` · `POST /api/ingest/ge-reconcile` | Offer upload and slot reconciliation |
@@ -118,7 +121,7 @@ dedicated copilot route.
 
 Filtering, presets and score re-ranking run through the same shared `market-query` logic the web app uses, so the plugin and website show identical results for the same account. Market polling uses the same phase-aligned schedule as the web app (`nextPublishInMs` + tier `publishLeadMs`, with tier `refreshIntervalMs` as fallback). The sidebar shows **Next refresh in Ns** (no fixed “every Xs” label). Polling pauses when the Market tab is not visible.
 
-The **GE copilot overlay** (Ultra, off by default) shows the live score and estimated economics for the item in your open Grand Exchange offer. It is display-only.
+The **GE copilot overlay** (off by default) shows the live score and estimated economics for the item in your open Grand Exchange offer when your plan includes copilot API access. It is display-only.
 
 ## Architecture
 

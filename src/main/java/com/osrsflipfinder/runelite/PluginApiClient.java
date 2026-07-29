@@ -1,6 +1,7 @@
 package com.osrsflipfinder.runelite;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -127,7 +128,14 @@ public class PluginApiClient
 				throw new IOException(message);
 			}
 
-			return gson.fromJson(raw, type);
+			try
+			{
+				return gson.fromJson(raw, type);
+			}
+			catch (JsonSyntaxException e)
+			{
+				throw new IOException("Invalid API response: " + e.getMessage(), e);
+			}
 		}
 	}
 

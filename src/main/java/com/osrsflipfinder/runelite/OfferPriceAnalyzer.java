@@ -113,8 +113,32 @@ final class OfferPriceAnalyzer
 
 		static Analysis none(Long marketPrice, Double delta, FlipOpportunity opp, boolean stagnant, long inactiveSec)
 		{
+			return none(marketPrice, delta, opp, stagnant, inactiveSec, false);
+		}
+
+		static Analysis none(
+			Long marketPrice,
+			Double delta,
+			FlipOpportunity opp,
+			boolean stagnant,
+			long inactiveSec,
+			boolean buySide
+		)
+		{
 			long net = opp != null ? opp.getNetProfitPerItem() : 0;
 			long est = marketPrice != null && marketPrice > 0 ? marketPrice : 0;
+			long recommended = est;
+			if (opp != null && est > 0)
+			{
+				if (buySide)
+				{
+					recommended = GeOfferPriceStrategy.suggestedBuyOfferGp(opp);
+				}
+				else
+				{
+					recommended = GeOfferPriceStrategy.suggestedSellOfferGp(opp);
+				}
+			}
 			if (opp != null && opp.isPriceDumped())
 			{
 				return new Analysis(
@@ -122,7 +146,7 @@ final class OfferPriceAnalyzer
 					delta,
 					marketPrice,
 					Action.WAIT,
-					est,
+					recommended,
 					net,
 					"Pause - unstable price",
 					"Dump flag | wait for norms to settle before re-listing"
@@ -147,7 +171,7 @@ final class OfferPriceAnalyzer
 				delta,
 				marketPrice,
 				Action.HOLD,
-				est,
+				recommended,
 				net,
 				"Hold at FlipX estimate",
 				detail
@@ -247,8 +271,10 @@ final class OfferPriceAnalyzer
 				unitFillPrice
 			);
 			long netAtOffer = estimateNetPerItem(buyForNet, marketSell, itemId);
+			long maxAggressiveBuy = GeOfferPriceStrategy.maxAggressiveBuyGp(marketBuy, marketSell, itemId);
+			long suggestedBuy = GeOfferPriceStrategy.suggestedBuyOfferGp(marketBuy, marketSell, itemId);
 
-			if (delta > thresholdPercent)
+			if (offerPrice > maxAggressiveBuy)
 			{
 				Issue issue = Issue.BUY_OVERBID;
 				if (shouldConsiderExit(inactiveSec, stagnationThresholdSec, netAtOffer, quantityFilled))
@@ -260,37 +286,16 @@ final class OfferPriceAnalyzer
 						marketSell,
 						offerPrice,
 						netAtOffer,
-						true
-					);
-				}
-				if (!stagnant)
-				{
-					return waitOnIssue(
-						issue,
-						delta,
-						marketBuy,
-						marketSell,
-						offerPrice,
-						netAtMarket,
-						netAtOffer,
-						stagnationThresholdSec,
 						true,
-						quantityFilled,
-						totalQuantity
+						suggestedBuy
 					);
 				}
-				return repriceBuy(issue, delta, marketBuy, marketSell, offerPrice, netAtMarket, quantityFilled, totalQuantity);
-			}
-			if (delta < -thresholdPercent)
-			{
-				Issue issue = Issue.BUY_UNDERBID;
 				if (!stagnant)
 				{
 					return waitOnIssue(
 						issue,
 						delta,
-						marketBuy,
-						marketSell,
+						suggestedBuy,
 						offerPrice,
 						netAtMarket,
 						netAtOffer,
@@ -307,11 +312,44 @@ final class OfferPriceAnalyzer
 					marketSell,
 					offerPrice,
 					netAtMarket,
+					suggestedBuy,
+					itemId,
 					quantityFilled,
 					totalQuantity
 				);
 			}
-			return Analysis.none(marketBuy, delta, opp, stagnant, inactiveSec);
+			if (delta < -thresholdPercent)
+			{
+				Issue issue = Issue.BUY_UNDERBID;
+				if (!stagnant)
+				{
+					return waitOnIssue(
+						issue,
+						delta,
+						suggestedBuy,
+						offerPrice,
+						netAtMarket,
+						netAtOffer,
+						stagnationThresholdSec,
+						true,
+						quantityFilled,
+						totalQuantity
+					);
+				}
+				return repriceBuy(
+					issue,
+					delta,
+					marketBuy,
+					marketSell,
+					offerPrice,
+					netAtMarket,
+					suggestedBuy,
+					itemId,
+					quantityFilled,
+					totalQuantity
+				);
+			}
+			return Analysis.none(marketBuy, delta, opp, stagnant, inactiveSec, true);
 		}
 
 		if (marketSell <= 0)
@@ -326,8 +364,10 @@ final class OfferPriceAnalyzer
 			unitFillPrice
 		);
 		long netAtOffer = estimateNetPerItem(marketBuy, sellForNet, itemId);
+		long minAggressiveSell = GeOfferPriceStrategy.minAggressiveSellGp(marketBuy, marketSell, itemId);
+		long suggestedSell = GeOfferPriceStrategy.suggestedSellOfferGp(marketBuy, marketSell, itemId);
 
-		if (delta < -thresholdPercent)
+		if (offerPrice < minAggressiveSell)
 		{
 			Issue issue = Issue.SELL_UNDERCUT;
 			if (shouldConsiderExit(inactiveSec, stagnationThresholdSec, netAtOffer, quantityFilled))
@@ -339,7 +379,8 @@ final class OfferPriceAnalyzer
 					marketSell,
 					offerPrice,
 					netAtOffer,
-					false
+					false,
+					suggestedSell
 				);
 			}
 			if (!stagnant)
@@ -347,8 +388,7 @@ final class OfferPriceAnalyzer
 				return waitOnIssue(
 					issue,
 					delta,
-					marketBuy,
-					marketSell,
+					suggestedSell,
 					offerPrice,
 					netAtMarket,
 					netAtOffer,
@@ -365,12 +405,27 @@ final class OfferPriceAnalyzer
 				marketSell,
 				offerPrice,
 				netAtMarket,
+				suggestedSell,
+				itemId,
 				quantityFilled,
 				totalQuantity
 			);
 		}
 		if (delta > thresholdPercent)
 		{
+			long netAtSuggested = estimateNetPerItem(marketBuy, suggestedSell, itemId);
+			if (netAtOffer > netAtSuggested)
+			{
+				return profitableOvercutHold(
+					delta,
+					marketSell,
+					offerPrice,
+					netAtOffer,
+					netAtSuggested,
+					stagnant,
+					inactiveSec
+				);
+			}
 			Issue issue = Issue.SELL_OVERCUT;
 			if (shouldConsiderExit(inactiveSec, stagnationThresholdSec, netAtOffer, quantityFilled))
 			{
@@ -381,7 +436,8 @@ final class OfferPriceAnalyzer
 					marketSell,
 					offerPrice,
 					netAtOffer,
-					false
+					false,
+					suggestedSell
 				);
 			}
 			if (!stagnant)
@@ -389,8 +445,7 @@ final class OfferPriceAnalyzer
 				return waitOnIssue(
 					issue,
 					delta,
-					marketBuy,
-					marketSell,
+					suggestedSell,
 					offerPrice,
 					netAtMarket,
 					netAtOffer,
@@ -407,18 +462,52 @@ final class OfferPriceAnalyzer
 				marketSell,
 				offerPrice,
 				netAtMarket,
+				suggestedSell,
+				itemId,
 				quantityFilled,
 				totalQuantity
 			);
 		}
-		return Analysis.none(marketSell, delta, opp, stagnant, inactiveSec);
+		return Analysis.none(marketSell, delta, opp, stagnant, inactiveSec, false);
+	}
+
+	private static Analysis profitableOvercutHold(
+		double delta,
+		long marketSell,
+		long offerPrice,
+		long netAtOffer,
+		long netAtSuggested,
+		boolean stagnant,
+		long inactiveSec
+	)
+	{
+		String detail = "Above FlipX sell est. | est. net "
+			+ MarketFormat.signedGp(netAtOffer)
+			+ "/item at your "
+			+ MarketFormat.gp(offerPrice)
+			+ " gp vs "
+			+ MarketFormat.signedGp(netAtSuggested)
+			+ "/item at est. sell — wait for fill";
+		if (stagnant)
+		{
+			detail += " | idle " + formatIdleMinutes(inactiveSec);
+		}
+		return new Analysis(
+			null,
+			delta,
+			marketSell,
+			Action.HOLD,
+			offerPrice,
+			netAtOffer,
+			"Hold - premium sell price",
+			detail
+		);
 	}
 
 	private static Analysis waitOnIssue(
 		Issue issue,
 		double delta,
-		long marketBuy,
-		long marketSell,
+		long repriceTargetGp,
 		long offerPrice,
 		long netAtMarket,
 		long netAtOffer,
@@ -428,11 +517,10 @@ final class OfferPriceAnalyzer
 		int totalQuantity
 	)
 	{
-		long target = isBuy ? marketBuy : marketSell;
 		String waitMin = formatStagnationMinutes(stagnationThresholdSec);
 		String side = isBuy ? "buy" : "sell";
 		String detail = "No need to cancel yet | if still stuck after ~" + waitMin
-			+ ", re-" + side + " at " + MarketFormat.gp(target) + " gp"
+			+ ", re-" + side + " at " + MarketFormat.gp(repriceTargetGp) + " gp"
 			+ partialFillNote(quantityFilled, totalQuantity);
 		if (netAtOffer > Long.MIN_VALUE / 4)
 		{
@@ -442,9 +530,9 @@ final class OfferPriceAnalyzer
 		return new Analysis(
 			issue,
 			delta,
-			target,
+			repriceTargetGp,
 			Action.WAIT,
-			target,
+			repriceTargetGp,
 			netAtMarket,
 			"Wait - " + issue.label().toLowerCase(),
 			detail
@@ -458,10 +546,10 @@ final class OfferPriceAnalyzer
 		long marketSell,
 		long offerPrice,
 		long netAtOffer,
-		boolean isBuy
+		boolean isBuy,
+		long repriceTargetGp
 	)
 	{
-		long target = isBuy ? marketBuy : marketSell;
 		String detail = "Idle a long time with est. net "
 			+ MarketFormat.signedGp(netAtOffer)
 			+ "/item at your "
@@ -469,14 +557,14 @@ final class OfferPriceAnalyzer
 			+ " gp | cancel only if you accept the loss or want to re-"
 			+ (isBuy ? "buy" : "sell")
 			+ " at "
-			+ MarketFormat.gp(target)
+			+ MarketFormat.gp(repriceTargetGp)
 			+ " gp";
 		return new Analysis(
 			issue,
 			delta,
-			target,
+			isBuy ? marketBuy : marketSell,
 			Action.ABORT_FLIP,
-			target,
+			repriceTargetGp,
 			netAtOffer,
 			"Consider exiting - locked loss",
 			detail
@@ -515,27 +603,30 @@ final class OfferPriceAnalyzer
 		long marketSell,
 		long offerPrice,
 		long netAtMarket,
+		long suggestedBuy,
+		int itemId,
 		int quantityFilled,
 		int totalQuantity
 	)
 	{
-		long gpDelta = Math.abs(offerPrice - marketBuy);
+		long netAtSuggested = estimateNetPerItem(suggestedBuy, marketSell, itemId);
+		long gpDelta = Math.abs(offerPrice - suggestedBuy);
 		String partial = partialFillNote(quantityFilled, totalQuantity);
-		String actionLine = "Set buy to " + MarketFormat.gp(marketBuy) + " gp";
-		String detail = "Cancel offer, then buy at " + MarketFormat.gp(marketBuy) + " gp"
+		String actionLine = "Set buy to " + MarketFormat.gp(suggestedBuy) + " gp";
+		String detail = "Cancel offer, then buy at " + MarketFormat.gp(suggestedBuy) + " gp"
 			+ (issue == Issue.BUY_OVERBID
 				? " (save " + MarketFormat.gp(gpDelta) + " gp vs now)"
 				: " (+" + MarketFormat.gp(gpDelta) + " gp vs now)")
 			+ partial
-			+ " | est. net " + MarketFormat.signedGp(netAtMarket) + "/item at sell "
+			+ " | est. net " + MarketFormat.signedGp(netAtSuggested) + "/item at sell "
 			+ MarketFormat.gp(marketSell);
 		return new Analysis(
 			issue,
 			delta,
 			marketBuy,
 			Action.REPRICE_BUY,
-			marketBuy,
-			netAtMarket,
+			suggestedBuy,
+			netAtSuggested,
 			actionLine,
 			detail
 		);
@@ -548,26 +639,29 @@ final class OfferPriceAnalyzer
 		long marketSell,
 		long offerPrice,
 		long netAtMarket,
+		long suggestedSell,
+		int itemId,
 		int quantityFilled,
 		int totalQuantity
 	)
 	{
-		long gpDelta = Math.abs(offerPrice - marketSell);
+		long netAtSuggested = estimateNetPerItem(marketBuy, suggestedSell, itemId);
+		long gpDelta = Math.abs(offerPrice - suggestedSell);
 		String partial = partialFillNote(quantityFilled, totalQuantity);
-		String actionLine = "Set sell to " + MarketFormat.gp(marketSell) + " gp";
-		String detail = "Cancel offer, then sell at " + MarketFormat.gp(marketSell) + " gp"
+		String actionLine = "Set sell to " + MarketFormat.gp(suggestedSell) + " gp";
+		String detail = "Cancel offer, then sell at " + MarketFormat.gp(suggestedSell) + " gp"
 			+ (issue == Issue.SELL_UNDERCUT
 				? " (+" + MarketFormat.gp(gpDelta) + " gp vs now)"
 				: " (-" + MarketFormat.gp(gpDelta) + " gp vs now)")
 			+ partial
-			+ " | est. net " + MarketFormat.signedGp(netAtMarket) + "/item";
+			+ " | est. net " + MarketFormat.signedGp(netAtSuggested) + "/item";
 		return new Analysis(
 			issue,
 			delta,
 			marketSell,
 			Action.REPRICE_SELL,
-			marketSell,
-			netAtMarket,
+			suggestedSell,
+			netAtSuggested,
 			actionLine,
 			detail
 		);

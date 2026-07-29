@@ -22,6 +22,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.plaf.ScrollBarUI;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.laf.RuneLiteScrollBarUI;
@@ -54,6 +55,7 @@ public class FlipFinderPanel extends PluginPanel
 	private final ImportPanel importPanel;
 	private final RecipeFlipsPanel recipeFlipsPanel;
 	private final ScheduledExecutorService executorService;
+	private final ItemCatalogSearchBar itemCatalogSearch;
 
 	private final JLabel statusBadge = PluginUi.statusBadge(PluginState.NOT_PAIRED);
 	private final JLabel metaLabel = PluginUi.caption("Not paired");
@@ -93,7 +95,9 @@ public class FlipFinderPanel extends PluginPanel
 		GeEventListener geEventListener,
 		ImportPanel importPanel,
 		RecipeFlipsPanel recipeFlipsPanel,
-		ScheduledExecutorService executorService
+		ScheduledExecutorService executorService,
+		ItemsClient itemsClient,
+		ItemManager itemManager
 	)
 	{
 		super();
@@ -111,6 +115,12 @@ public class FlipFinderPanel extends PluginPanel
 		this.importPanel = importPanel;
 		this.recipeFlipsPanel = recipeFlipsPanel;
 		this.executorService = executorService;
+		this.itemCatalogSearch = new ItemCatalogSearchBar(
+			itemsClient,
+			itemManager,
+			executorService,
+			(id, name) -> openCatalogItem(id, name)
+		);
 
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -128,7 +138,13 @@ public class FlipFinderPanel extends PluginPanel
 			statusBadge
 		));
 		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
+		layoutPanel.add(PluginUi.discordCommunityBanner(
+			() -> LinkBrowser.browse(CommunityLinks.DISCORD_INVITE_URL)
+		));
+		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
 		layoutPanel.add(PluginUi.labeledField("View", sectionCombo));
+		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
+		layoutPanel.add(itemCatalogSearch);
 		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_MD));
 		layoutPanel.add(sectionContent);
 		SidebarContentPanel.lockWidth(layoutPanel);
@@ -226,6 +242,16 @@ public class FlipFinderPanel extends PluginPanel
 		tickRefreshTimerLabels();
 		revalidate();
 		repaint();
+	}
+
+	private void openCatalogItem(int itemId, String itemName)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			sectionCombo.setSelectedIndex(SidebarSection.MARKET.ordinal());
+			showSection(SidebarSection.MARKET);
+			marketPanel.openItemFromCatalog(itemId, itemName);
+		});
 	}
 
 	private void refreshSectionData(SidebarSection section)
@@ -347,6 +373,11 @@ public class FlipFinderPanel extends PluginPanel
 
 	private boolean portfolioPollingEnabled()
 	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements == null || !entitlements.isPluginSync())
+		{
+			return false;
+		}
 		return config.enableUpload()
 			|| currentSection == SidebarSection.MY_SLOTS
 			|| currentSection == SidebarSection.SESSION;
@@ -392,10 +423,13 @@ public class FlipFinderPanel extends PluginPanel
 		pairingForm.add(PluginUi.gap(PluginUi.SPACING_SM));
 		JPanel pairingInner = PluginUi.verticalStack(
 			PluginUi.hint(
-				"On flipx.gg: generate a pairing code (network intelligence is on by default), then enter it below."
+				"On flipx.gg: Settings → RuneLite, generate a pairing code, then enter it below."
 			),
 			PluginUi.hint(
-				"Enable GE upload or the Market panel in plugin settings first."
+				"Free: Flip terminal + GE copilot when paired. Pro: GE upload, portfolio sync, and import."
+			),
+			PluginUi.hint(
+				"Enable the Market panel (or GE upload for Pro sync) in plugin settings first."
 			),
 			PluginUi.labeledField("Pairing code", codeField),
 			connectButton
@@ -413,9 +447,13 @@ public class FlipFinderPanel extends PluginPanel
 			pairingSuccessLabel,
 			disconnectButton
 		);
+		PluginUi.fullWidthGrow(metaLabel);
+		PluginUi.fullWidthGrow(queueLabel);
+		PluginUi.fullWidthGrow(lastSyncLabel);
+		PluginUi.fullWidthGrow(pairingSuccessLabel);
 		PluginUi.fullWidth(disconnectButton);
 		JPanel summaryCard = PluginUi.formCard(summaryInner);
-		PluginUi.fullWidth(summaryCard);
+		PluginUi.fullWidthGrow(summaryCard);
 		connectedSummary.add(summaryCard);
 		SidebarContentPanel.lockWidth(connectedSummary);
 
@@ -429,6 +467,7 @@ public class FlipFinderPanel extends PluginPanel
 		connectionViewPanel.add(PluginUi.gap(PluginUi.SPACING_MD));
 		connectionViewPanel.add(footerLinks);
 		connectionViewPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
+		PluginUi.fullWidthGrow(errorLabel);
 		connectionViewPanel.add(errorLabel);
 		SidebarContentPanel.lockWidth(connectionViewPanel);
 	}
@@ -445,9 +484,10 @@ public class FlipFinderPanel extends PluginPanel
 			updateStatusBadge(state);
 			updateConnectionLayout(state);
 			updateMeta();
-			queueLabel.setText("Queue: " + ingestClient.getQueueSize() + " events");
+			PluginUi.setCardCaption(queueLabel, "Queue: " + ingestClient.getQueueSize() + " events");
 			disconnectButton.setEnabled(PairingCredentials.isPaired(config));
 			applySectionActiveStates();
+			itemCatalogSearch.setEnabled(isPairedForMarket());
 			marketPanel.refreshUi();
 			if (isPairedForMarket())
 			{
@@ -469,7 +509,7 @@ public class FlipFinderPanel extends PluginPanel
 		connectedSummary.setVisible(paired);
 		if (!paired)
 		{
-			pairingSuccessLabel.setText("");
+			PluginUi.setCardCaption(pairingSuccessLabel, "");
 		}
 	}
 
@@ -527,28 +567,13 @@ public class FlipFinderPanel extends PluginPanel
 					connectButton.setEnabled(true);
 					disconnectButton.setEnabled(true);
 					onError(null);
-					if (result.isNetworkIntelligenceOptedIn())
-					{
-						if (result.isWelcomeProGranted())
-						{
-							pairingSuccessLabel.setText(
-								"Network intelligence enabled on your FlipX account (welcome Pro unlocked on web)."
-							);
-						}
-						else
-						{
-							pairingSuccessLabel.setText("Network intelligence enabled on your FlipX account.");
-						}
-					}
-					else
-					{
-						pairingSuccessLabel.setText(
-							"Paired. Enable network intelligence on the web to contribute anonymized GE signals."
-						);
-					}
+					PluginUi.setCardCaption(
+						pairingSuccessLabel,
+						"Paired. Free accounts can use Flip and GE copilot; upgrade to Pro on flipx.gg for sync."
+					);
 					refreshUi();
 					geEventListener.backfillAllSlots();
-					selectSection(SidebarSection.MY_SLOTS);
+					selectSection(SidebarSection.MARKET);
 				});
 			}
 			catch (Exception e)
@@ -637,23 +662,44 @@ public class FlipFinderPanel extends PluginPanel
 		String pairedAt = config.pairedAt();
 		if (pairedAt == null || pairedAt.isBlank())
 		{
-			metaLabel.setText("Not paired");
+			PluginUi.setCardCaption(metaLabel, "Not paired");
 			return;
 		}
-		metaLabel.setText("Paired " + pairedAt.replace('T', ' ').substring(0, Math.min(19, pairedAt.length())));
+		PluginUi.setCardCaption(
+			metaLabel,
+			"Paired " + pairedAt.replace('T', ' ').substring(0, Math.min(19, pairedAt.length()))
+				+ tierSuffix()
+		);
+	}
+
+	private String tierSuffix()
+	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements == null)
+		{
+			return "";
+		}
+		if (entitlements.isPluginSync())
+		{
+			return " · Pro sync";
+		}
+		return " · Free (browse + copilot)";
 	}
 
 	private void onSyncStats(IngestClient.SyncStats stats)
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			lastSyncLabel.setText(String.format(
-				"Last sync %s | +%d | skipped %d",
-				TIME_FORMAT.format(stats.getSyncedAt()),
-				stats.getInserted(),
-				stats.getSkipped()
-			));
-			queueLabel.setText("Queue: " + ingestClient.getQueueSize() + " events");
+			PluginUi.setCardCaption(
+				lastSyncLabel,
+				String.format(
+					"Last sync %s | +%d | skipped %d",
+					TIME_FORMAT.format(stats.getSyncedAt()),
+					stats.getInserted(),
+					stats.getSkipped()
+				)
+			);
+			PluginUi.setCardCaption(queueLabel, "Queue: " + ingestClient.getQueueSize() + " events");
 		});
 	}
 
@@ -696,14 +742,9 @@ public class FlipFinderPanel extends PluginPanel
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			if (message == null || message.isBlank())
-			{
-				errorLabel.setText(" ");
-			}
-			else
-			{
-				errorLabel.setText(message);
-			}
+			PluginUi.setSidebarError(errorLabel, message);
+			connectionViewPanel.revalidate();
+			connectionViewPanel.repaint();
 		});
 	}
 

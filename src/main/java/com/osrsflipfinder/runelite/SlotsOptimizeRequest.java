@@ -15,6 +15,7 @@ public class SlotsOptimizeRequest
 	private List<MarketQueryRequest.Sort> sort;
 	private Integer availableSlots;
 	private List<Integer> excludeItemIds;
+	private List<Integer> emptySlotIndices;
 
 	public void setRankSort(String sortId, boolean desc)
 	{

@@ -47,6 +47,7 @@ public class MarketQueryRequest
 		private Double minConfidenceScore;
 		private Boolean hideLowConfidence;
 		private Boolean discountOnly;
+		private Boolean deepDiscountOnly;
 		private Boolean dumpedOnly;
 	}
 }

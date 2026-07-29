@@ -44,6 +44,7 @@ final class PluginUi
 {
 	static final Color GOLD = new Color(0xD9B45B);
 	static final Color GOLD_DIM = new Color(0x8A6F3A);
+	static final Color DISCORD_BLURPLE = new Color(0x58, 0x65, 0xF2);
 	static final Color POSITIVE = ColorScheme.PROGRESS_COMPLETE_COLOR;
 	static final Color NEGATIVE = ColorScheme.PROGRESS_ERROR_COLOR;
 	static final Color WARNING = ColorScheme.PROGRESS_INPROGRESS_COLOR;
@@ -296,11 +297,16 @@ final class PluginUi
 
 	static JPanel sectionHeader(String title)
 	{
+		return sectionHeader(sectionTitle(title));
+	}
+
+	static JPanel sectionHeader(JLabel titleLabel)
+	{
 		JPanel row = new SidebarContentPanel();
 		row.setLayout(new BorderLayout());
 		transparent(row);
 		row.setBorder(new CompoundBorder(SECTION_RULE, new EmptyBorder(SPACING_MD, 0, SPACING_MD, 0)));
-		row.add(sectionTitle(title), BorderLayout.CENTER);
+		row.add(titleLabel, BorderLayout.CENTER);
 		SidebarContentPanel.lockWidth(row);
 		return row;
 	}
@@ -358,6 +364,40 @@ final class PluginUi
 			CARD_PADDING
 		));
 		card.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return card;
+	}
+
+	/** Persistent community CTA — opens {@link CommunityLinks#DISCORD_INVITE_URL}. */
+	static JPanel discordCommunityBanner(Runnable onJoin)
+	{
+		JPanel card = card();
+		card.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(2, 0, 0, 0, DISCORD_BLURPLE),
+				BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1, true)
+			),
+			CARD_PADDING
+		));
+
+		JLabel title = new JLabel("Join FlipX Discord");
+		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setForeground(Color.WHITE);
+		title.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JLabel body = caption(" ");
+		body.setAlignmentX(Component.LEFT_ALIGNMENT);
+		setCardCaption(body, "Help, flips & announcements. Pairing help in #help.");
+
+		JButton join = primaryButton("Open Discord");
+		join.setAlignmentX(Component.LEFT_ALIGNMENT);
+		join.addActionListener(e -> onJoin.run());
+
+		card.add(title);
+		card.add(gap(SPACING_XS));
+		card.add(body);
+		card.add(gap(SPACING_SM));
+		card.add(join);
+		SidebarContentPanel.lockWidth(card);
 		return card;
 	}
 
@@ -501,8 +541,36 @@ final class PluginUi
 
 	static void setMultilineCaption(JLabel label, String text, Color color)
 	{
-		label.setText("<html><div style='width:" + INNER_WIDTH + "px;color:" + htmlColor(color) + ";'>"
-			+ escapeHtml(text) + "</div></html>");
+		setMultilineCaption(label, text, color, INNER_WIDTH);
+	}
+
+	static void setMultilineCaption(JLabel label, String text, Color color, int wrapWidth)
+	{
+		if (text == null || text.isBlank())
+		{
+			label.setText(" ");
+			return;
+		}
+		label.setText(
+			"<html><div style='width:" + Math.max(80, wrapWidth) + "px;color:" + htmlColor(color) + ";'>"
+				+ escapeHtml(text) + "</div></html>"
+		);
+	}
+
+	/** Caption inside a {@link #formCard} / {@link #card()} (accounts for card padding). */
+	static void setCardCaption(JLabel label, String text)
+	{
+		setMultilineCaption(label, text, ColorScheme.LIGHT_GRAY_COLOR, cardBodyWrapWidth());
+	}
+
+	static void setSidebarError(JLabel label, String text)
+	{
+		if (text == null || text.isBlank())
+		{
+			label.setText(" ");
+			return;
+		}
+		setMultilineCaption(label, text, NEGATIVE, INNER_WIDTH);
 	}
 
 	static JLabel loadingCaption(String text)
@@ -513,7 +581,7 @@ final class PluginUi
 	}
 
 	/** Session stats hero - gold top rule, large signed profit, optional subline (height grows with text). */
-	static JPanel sessionProfitHero(JLabel profitLabel, String caption, JLabel subLabel)
+	static JPanel sessionProfitHero(JLabel profitLabel, JLabel captionLabel, JLabel subLabel)
 	{
 		JPanel hero = new SidebarContentPanel();
 		hero.setLayout(new BoxLayout(hero, BoxLayout.Y_AXIS));
@@ -527,9 +595,9 @@ final class PluginUi
 		));
 		hero.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JLabel captionLabel = new JLabel(caption, JLabel.CENTER);
 		captionLabel.setFont(FontManager.getRunescapeSmallFont());
 		captionLabel.setForeground(GOLD);
+		captionLabel.setHorizontalAlignment(JLabel.CENTER);
 		captionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
 		profitLabel.setHorizontalAlignment(JLabel.CENTER);
@@ -546,6 +614,13 @@ final class PluginUi
 		hero.add(subLabel);
 		SidebarContentPanel.lockWidth(hero);
 		return hero;
+	}
+
+	/** Session stats hero - gold top rule, large signed profit, optional subline (height grows with text). */
+	static JPanel sessionProfitHero(JLabel profitLabel, String caption, JLabel subLabel)
+	{
+		JLabel captionLabel = new JLabel(caption, JLabel.CENTER);
+		return sessionProfitHero(profitLabel, captionLabel, subLabel);
 	}
 
 	/** @deprecated use {@link #sessionProfitHero(JLabel, String, JLabel)} */
@@ -783,6 +858,35 @@ final class PluginUi
 		return statCell(valueLabel, caption, heroGridCellWidth(2));
 	}
 
+	static JPanel statCell(JLabel valueLabel, JLabel captionLabel)
+	{
+		return statCell(valueLabel, captionLabel, heroGridCellWidth(2));
+	}
+
+	static JPanel statCell(JLabel valueLabel, JLabel captionLabel, int cellWidth)
+	{
+		JPanel cell = new JPanel();
+		cell.setLayout(new BoxLayout(cell, BoxLayout.Y_AXIS));
+		cell.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		cell.setAlignmentX(Component.CENTER_ALIGNMENT);
+		valueLabel.setForeground(Color.WHITE);
+		valueLabel.setHorizontalAlignment(JLabel.CENTER);
+		valueLabel.setFont(FontManager.getRunescapeSmallFont());
+		valueLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+		captionLabel.setFont(FontManager.getRunescapeSmallFont());
+		captionLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		captionLabel.setHorizontalAlignment(JLabel.CENTER);
+		captionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+		setGridStatCaption(captionLabel, captionLabel.getText(), cellWidth);
+		cell.add(valueLabel);
+		cell.add(gap(SPACING_XS));
+		cell.add(captionLabel);
+		Dimension cellMax = new Dimension(cellWidth, Short.MAX_VALUE);
+		cell.setMaximumSize(cellMax);
+		cell.setPreferredSize(new Dimension(cellWidth, cell.getPreferredSize().height));
+		return cell;
+	}
+
 	static JPanel statCell(JLabel valueLabel, String caption, int cellWidth)
 	{
 		JPanel cell = new JPanel();
@@ -807,7 +911,7 @@ final class PluginUi
 		return cell;
 	}
 
-	private static void setGridStatCaption(JLabel captionLabel, String caption, int cellWidth)
+	static void setGridStatCaption(JLabel captionLabel, String caption, int cellWidth)
 	{
 		captionLabel.setText(
 			"<html><div style='width:" + cellWidth + "px;text-align:center;'>"

@@ -216,7 +216,7 @@ class ItemDetailView extends SidebarContentPanel
 			MarketFormat.percent(roi)
 		);
 
-		long gpHr = opp.getEstimatedProfitPerHour();
+		long gpHr = FlipCopilotPresenter.estimatedGpPerHour(opp);
 		PluginUi.setHeroGridStatValue(
 			gpHrLabel,
 			MarketFormat.gpCompact(gpHr),
@@ -233,6 +233,11 @@ class ItemDetailView extends SidebarContentPanel
 		statsPanel.removeAll();
 		PluginUi.addStatLine(statsPanel, "Wiki est. buy", MarketFormat.gp(opp.getEstimatedBuyPrice()));
 		PluginUi.addStatLine(statsPanel, "Wiki est. sell", MarketFormat.gp(opp.getEstimatedSellPrice()));
+		long breakEven = GeTax.breakEvenSellPrice(opp.getEstimatedBuyPrice(), opp.getId());
+		if (breakEven > 0)
+		{
+			PluginUi.addStatLine(statsPanel, "Break-even sell", MarketFormat.gp(breakEven));
+		}
 		PluginUi.addStatLine(statsPanel, "Total profit", MarketFormat.gp(opp.getEstimatedProfitAtQuantity()));
 		PluginUi.addStatLine(statsPanel, "Turnover", String.format("%.1fh", opp.getEstimatedTurnoverHours()));
 		PluginUi.addStatLine(statsPanel, "Score", opp.getOpportunityScore() + "/100");

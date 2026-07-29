@@ -1,13 +1,17 @@
 package com.osrsflipfinder.runelite;
 
 import java.awt.Color;
+import java.util.Collections;
 import java.util.List;
 import javax.inject.Inject;
 import javax.swing.BoxLayout;
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.util.LinkBrowser;
@@ -15,15 +19,23 @@ import net.runelite.client.util.LinkBrowser;
 /** Live session dashboard - profit hero, metrics, ranked item breakdown. */
 class SessionStatsPanel extends SidebarContentPanel
 {
+	private static final String CONFIG_PORTFOLIO_PERIOD = "portfolioPeriodId";
+
 	private final PortfolioClient portfolioClient;
+	private final ConfigManager configManager;
 	private final ItemManager itemManager;
 
+	private final JComboBox<String> periodCombo = new JComboBox<>(new DefaultComboBoxModel<>(PortfolioPeriod.LABELS));
+	private final JLabel profitHeroCaption = new JLabel("Session P&L", JLabel.CENTER);
 	private final JLabel profitLabel = new JLabel(PluginUi.PLACEHOLDER);
 	private final JLabel profitSubLabel = PluginUi.caption("After GE tax | completed flips");
 	private final JLabel heroGpHr = new JLabel(PluginUi.PLACEHOLDER, JLabel.CENTER);
 	private final JLabel heroRoi = new JLabel(PluginUi.PLACEHOLDER, JLabel.CENTER);
 	private final JLabel heroFlips = new JLabel(PluginUi.PLACEHOLDER, JLabel.CENTER);
 	private final JLabel heroTime = new JLabel(PluginUi.PLACEHOLDER, JLabel.CENTER);
+	private final JLabel heroTimeCaption = new JLabel("Session time", JLabel.CENTER);
+	private final JLabel breakdownTitleLabel = PluginUi.sectionTitle("Session breakdown");
+	private final JLabel topItemsTitleLabel = PluginUi.sectionTitle("Top items this session");
 	private final JPanel metricsBlock = PluginUi.statBlock();
 	private final JLabel sessionMetaLabel = PluginUi.caption(" ");
 	private final JPanel itemList = PluginUi.listContainer();
@@ -32,30 +44,40 @@ class SessionStatsPanel extends SidebarContentPanel
 	private final JLabel refreshTimerLabel = PluginUi.caption(" ");
 
 	@Inject
-	SessionStatsPanel(PortfolioClient portfolioClient, ItemManager itemManager)
+	SessionStatsPanel(
+		PortfolioClient portfolioClient,
+		ConfigManager configManager,
+		ItemManager itemManager
+	)
 	{
 		this.portfolioClient = portfolioClient;
+		this.configManager = configManager;
 		this.itemManager = itemManager;
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		PluginUi.transparent(this);
 
-		add(PluginUi.sessionProfitHero(profitLabel, "Session P&L", profitSubLabel));
+		PluginUi.styleCombo(periodCombo);
+		periodCombo.addActionListener(e -> onPeriodSelected());
+
+		add(PluginUi.labeledField("Time period", periodCombo));
+		add(PluginUi.gap(PluginUi.SPACING_SM));
+		add(PluginUi.sessionProfitHero(profitLabel, profitHeroCaption, profitSubLabel));
 		add(PluginUi.gap(PluginUi.SPACING_SM));
 		add(PluginUi.detailHeroGrid(
 			PluginUi.statCell(heroGpHr, "GP / hour"),
 			PluginUi.statCell(heroRoi, "Net ROI"),
 			PluginUi.statCell(heroFlips, "Flips"),
-			PluginUi.statCell(heroTime, "Session time")
+			PluginUi.statCell(heroTime, heroTimeCaption)
 		));
 		add(PluginUi.gap(PluginUi.SPACING_SM));
-		add(PluginUi.sectionHeader("Session breakdown"));
+		add(PluginUi.sectionHeader(breakdownTitleLabel));
 		add(metricsBlock);
 		add(PluginUi.gap(PluginUi.SPACING_XS));
 		add(sessionMetaLabel);
 		add(PluginUi.gap(PluginUi.SPACING_MD));
 
-		add(PluginUi.sectionHeader("Top items this session"));
+		add(PluginUi.sectionHeader(topItemsTitleLabel));
 		add(itemList);
 		add(itemsEmptyLabel);
 		add(PluginUi.gap(PluginUi.SPACING_MD));
@@ -85,8 +107,47 @@ class SessionStatsPanel extends SidebarContentPanel
 			})
 		);
 
+		loadSavedPeriod();
+		applyPeriodLabels(portfolioClient.getPortfolioPeriod());
 		fillMetricsPlaceholder();
 		fillHeroPlaceholders();
+	}
+
+	private void loadSavedPeriod()
+	{
+		String savedId = FlipFinderConfigIO.getString(configManager, CONFIG_PORTFOLIO_PERIOD, PortfolioPeriod.DEFAULT.getId());
+		PortfolioPeriod period = PortfolioPeriod.fromId(savedId);
+		portfolioClient.setPortfolioPeriod(period);
+		int index = PortfolioPeriod.indexOf(period);
+		if (periodCombo.getSelectedIndex() != index)
+		{
+			periodCombo.setSelectedIndex(index);
+		}
+	}
+
+	private void onPeriodSelected()
+	{
+		PortfolioPeriod period = PortfolioPeriod.fromIndex(periodCombo.getSelectedIndex());
+		configManager.setConfiguration(FlipFinderConfig.GROUP, CONFIG_PORTFOLIO_PERIOD, period.getId());
+		portfolioClient.setPortfolioPeriod(period);
+		applyPeriodLabels(period);
+	}
+
+	private void applyPeriodLabels(PortfolioPeriod period)
+	{
+		if (period == null)
+		{
+			period = PortfolioPeriod.DEFAULT;
+		}
+		profitHeroCaption.setText(period.heroProfitTitle());
+		breakdownTitleLabel.setText(period.breakdownSectionTitle());
+		topItemsTitleLabel.setText(period.topItemsSectionTitle());
+		heroTimeCaption.setText(period.heroTimeLabel());
+		PluginUi.setGridStatCaption(
+			heroTimeCaption,
+			period.heroTimeLabel(),
+			PluginUi.heroGridCellWidth(2)
+		);
 	}
 
 	void refresh()
@@ -114,7 +175,44 @@ class SessionStatsPanel extends SidebarContentPanel
 
 	private void render(LiveSessionStats session, List<ItemPerformanceRow> items)
 	{
-		boolean hasActivity = session.getFlipCount() > 0 || session.getOpenOfferCount() > 0;
+		PortfolioPeriod period = portfolioClient.getPortfolioPeriod();
+		boolean statsReady = portfolioClient.isSessionStatsForPeriod(period);
+		boolean itemsReady = portfolioClient.isSessionItemsForPeriod(period);
+
+		if (!itemsReady)
+		{
+			items = Collections.emptyList();
+		}
+
+		if (session == null || !statsReady)
+		{
+			fillHeroPlaceholders();
+			fillMetricsPlaceholder();
+			sessionMetaLabel.setText(
+				portfolioClient.isFetchInProgress() || portfolioClient.isActive()
+					? "Loading " + period.getLabel().toLowerCase() + "…"
+					: " "
+			);
+			renderItems(items);
+			if (portfolioClient.isSessionOffline() && portfolioClient.getSessionCachedAt() != null)
+			{
+				statusLabel.setText(
+					"Offline | cached " + LocalCacheStore.formatCachedAt(portfolioClient.getSessionCachedAt())
+				);
+			}
+			else
+			{
+				statusLabel.setText(" ");
+			}
+			revalidate();
+			repaint();
+			return;
+		}
+
+		boolean liveSession = period.isLiveSession();
+		boolean hasActivity = liveSession
+			? session.getFlipCount() > 0 || session.getOpenOfferCount() > 0
+			: session.getFlipCount() > 0;
 
 		metricsBlock.removeAll();
 
@@ -125,8 +223,12 @@ class SessionStatsPanel extends SidebarContentPanel
 			setProfitSubline("After GE tax | completed flips");
 			fillHeroPlaceholders();
 			fillMetricsPlaceholder();
-			sessionMetaLabel.setText("No synced flips this session");
-			renderItems(null);
+			sessionMetaLabel.setText(
+				liveSession
+					? "No synced flips this session"
+					: "No completed flips in " + period.getLabel().toLowerCase()
+			);
+			renderItems(items);
 		}
 		else
 		{
@@ -136,7 +238,7 @@ class SessionStatsPanel extends SidebarContentPanel
 
 			long completed = session.getCompletedProfit();
 			long live = session.getInProgressProfit();
-			if (session.getOpenOfferCount() > 0 || live != 0)
+			if (liveSession && (session.getOpenOfferCount() > 0 || live != 0))
 			{
 				setProfitSubline(String.format(
 					"Completed %s | Live %s | %d open",
@@ -167,13 +269,14 @@ class SessionStatsPanel extends SidebarContentPanel
 			heroTime.setForeground(Color.WHITE);
 
 			metricsBlock.removeAll();
+			String completedLabel = liveSession ? "Completed P&L" : "Net P&L";
 			PluginUi.addStatLine(
 				metricsBlock,
-				"Completed P&L",
-				MarketFormat.signedGp(session.getCompletedProfit()),
-				session.getCompletedProfit() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE
+				completedLabel,
+				MarketFormat.signedGp(liveSession ? session.getCompletedProfit() : session.getTotalProfit()),
+				session.getTotalProfit() >= 0 ? PluginUi.POSITIVE : PluginUi.NEGATIVE
 			);
-			if (session.getOpenOfferCount() > 0 || live != 0)
+			if (liveSession && (session.getOpenOfferCount() > 0 || live != 0))
 			{
 				PluginUi.addStatLine(
 					metricsBlock,
@@ -218,7 +321,7 @@ class SessionStatsPanel extends SidebarContentPanel
 				);
 			}
 
-			if (session.getInProgressTax() > 0)
+			if (liveSession && session.getInProgressTax() > 0)
 			{
 				PluginUi.addStatLine(
 					metricsBlock,
@@ -230,7 +333,7 @@ class SessionStatsPanel extends SidebarContentPanel
 
 			PluginUi.finalizeStatBlock(metricsBlock);
 
-			sessionMetaLabel.setText(buildSessionMeta(session));
+			sessionMetaLabel.setText(buildPeriodMeta(session, period));
 			renderItems(items);
 		}
 
@@ -322,13 +425,37 @@ class SessionStatsPanel extends SidebarContentPanel
 		itemList.repaint();
 	}
 
-	private static String buildSessionMeta(LiveSessionStats session)
+	private static String buildPeriodMeta(LiveSessionStats session, PortfolioPeriod period)
 	{
-		if (session.getStartedAt() != null && !session.getStartedAt().isBlank())
+		if (period.isLiveSession())
 		{
-			return "Session started " + session.getStartedAt().replace('T', ' ').substring(0, 16);
+			if (session.getStartedAt() != null && !session.getStartedAt().isBlank())
+			{
+				return "Session started " + formatIsoShort(session.getStartedAt());
+			}
+			return " ";
 		}
-		return " ";
+
+		String from = session.getStartedAt();
+		String to = session.getEndedAt();
+		if (from != null && !from.isBlank() && to != null && !to.isBlank())
+		{
+			return formatIsoShort(from) + " → " + formatIsoShort(to);
+		}
+		if (from != null && !from.isBlank())
+		{
+			return "Since " + formatIsoShort(from);
+		}
+		return period.getLabel();
+	}
+
+	private static String formatIsoShort(String iso)
+	{
+		if (iso.length() >= 16)
+		{
+			return iso.replace('T', ' ').substring(0, 16);
+		}
+		return iso.replace('T', ' ');
 	}
 
 	private static String formatDuration(long ms)

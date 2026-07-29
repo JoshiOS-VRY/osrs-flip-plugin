@@ -56,10 +56,19 @@ public class OsrsFlipFinderPlugin extends Plugin
 	private MarketCopilotOverlay marketCopilotOverlay;
 
 	@Inject
-	private GeChartOverlay geChartOverlay;
+	private GeWatchlistHintOverlay geWatchlistHintOverlay;
 
 	@Inject
-	private GeWatchlistHintOverlay geWatchlistHintOverlay;
+	private GeSlotHighlightOverlay geSlotHighlightOverlay;
+
+	@Inject
+	private GeSlotTooltipOverlay geSlotTooltipOverlay;
+
+	@Inject
+	private GeFlipxPriceAssist geFlipxPriceAssist;
+
+	@Inject
+	private GeFlipxSetupAssist geFlipxSetupAssist;
 
 	@Inject
 	private GeInterfaceListener geInterfaceListener;
@@ -80,14 +89,17 @@ public class OsrsFlipFinderPlugin extends Plugin
 		eventBus.register(geEventListener);
 		eventBus.register(coinBalanceService);
 		eventBus.register(geInterfaceListener);
+		eventBus.register(geFlipxPriceAssist);
+		eventBus.register(geFlipxSetupAssist);
 		eventBus.register(this);
 		ingestClient.start();
 		opportunitiesClient.start();
 		portfolioClient.start();
 		coinBalanceService.start();
 		overlayManager.add(marketCopilotOverlay);
-		overlayManager.add(geChartOverlay);
 		overlayManager.add(geWatchlistHintOverlay);
+		overlayManager.add(geSlotHighlightOverlay);
+		overlayManager.add(geSlotTooltipOverlay);
 
 		BufferedImage icon = loadIcon();
 
@@ -115,11 +127,14 @@ public class OsrsFlipFinderPlugin extends Plugin
 		opportunitiesClient.shutdown();
 		portfolioClient.shutdown();
 		overlayManager.remove(marketCopilotOverlay);
-		overlayManager.remove(geChartOverlay);
 		overlayManager.remove(geWatchlistHintOverlay);
+		overlayManager.remove(geSlotHighlightOverlay);
+		overlayManager.remove(geSlotTooltipOverlay);
 		eventBus.unregister(geEventListener);
 		eventBus.unregister(coinBalanceService);
 		eventBus.unregister(geInterfaceListener);
+		eventBus.unregister(geFlipxPriceAssist);
+		eventBus.unregister(geFlipxSetupAssist);
 		eventBus.unregister(this);
 		clientToolbar.removeNavigation(navButton);
 		log.debug("FlipX plugin stopped");
@@ -149,7 +164,7 @@ public class OsrsFlipFinderPlugin extends Plugin
 			case "enableUpload":
 			case "enableMarketPanel":
 			case "enableGeOverlay":
-			case "enableGeChartOverlay":
+			case "enableGePriceAssist":
 			case "enableWatchlistGeHint":
 			case "apiKey":
 			case "pairedAt":

@@ -59,10 +59,16 @@ final class GeItemResolver
 		return soleActiveOfferItem(client);
 	}
 
-	private static boolean isGeOpen(Client client)
+	static boolean isGeOpen(Client client)
 	{
 		Widget universe = client.getWidget(InterfaceID.GeOffers.UNIVERSE);
 		return universe != null && !universe.isSelfHidden();
+	}
+
+	/** Main GE slot picker — not offer details or new-offer setup. */
+	static boolean isSlotGridVisible(Client client)
+	{
+		return isGeOpen(client) && !isDetailsVisible(client) && !isSetupVisible(client);
 	}
 
 	private static boolean isDetailsVisible(Client client)

@@ -28,6 +28,7 @@ class GeSlotRow extends JPanel
 		long inactiveSeconds,
 		boolean stagnant,
 		OfferPriceAnalyzer.Analysis analysis,
+		long breakEvenSell,
 		ItemManager itemManager
 	)
 	{
@@ -69,10 +70,20 @@ class GeSlotRow extends JPanel
 		priceLine.setFont(FontManager.getRunescapeSmallFont());
 		PluginUi.stackLine(body, priceLine);
 
+		if (breakEvenSell > 0)
+		{
+			JLabel beLine = new JLabel("<html><div style='width:" + wrap + "px;'>"
+				+ PluginUi.htmlSpan(PluginUi.TEXT_SOFT, "Break-even sell ")
+				+ PluginUi.htmlSpan(Color.WHITE, MarketFormat.gp(breakEvenSell) + " gp")
+				+ "</div></html>");
+			beLine.setFont(FontManager.getRunescapeSmallFont());
+			PluginUi.stackLine(body, beLine);
+		}
+
 		if (analysis != null)
 		{
 			addActionBlock(body, analysis, state, wrap);
-			body.setToolTipText(buildTooltip(analysis, stagnant, inactiveSeconds));
+			body.setToolTipText(GeSlotTooltipBuilder.buildSidebarTooltip(analysis, stagnant, inactiveSeconds));
 		}
 		else if (stagnant)
 		{
@@ -157,47 +168,6 @@ class GeSlotRow extends JPanel
 			return "Est. " + MarketFormat.gp(analysis.marketPrice) + " gp" + formatDelta(analysis.deltaPercent);
 		}
 		return null;
-	}
-
-	private static String buildTooltip(
-		OfferPriceAnalyzer.Analysis analysis,
-		boolean stagnant,
-		long inactiveSeconds
-	)
-	{
-		StringBuilder tip = new StringBuilder("<html>");
-		if (analysis.detailLine != null && !analysis.detailLine.isBlank())
-		{
-			tip.append(analysis.detailLine);
-		}
-		if (analysis.recommendedPrice > 0)
-		{
-			if (tip.length() > 6)
-			{
-				tip.append("<br>");
-			}
-			tip.append("Target ").append(MarketFormat.gp(analysis.recommendedPrice)).append(" gp");
-		}
-		if (analysis.projectedNetPerItem > Long.MIN_VALUE / 4
-			&& analysis.action != OfferPriceAnalyzer.Action.HOLD
-			&& analysis.action != OfferPriceAnalyzer.Action.COLLECT)
-		{
-			if (tip.length() > 6)
-			{
-				tip.append("<br>");
-			}
-			tip.append("Est. net ").append(MarketFormat.signedGp(analysis.projectedNetPerItem)).append(" / item");
-		}
-		if (stagnant)
-		{
-			if (tip.length() > 6)
-			{
-				tip.append("<br>");
-			}
-			tip.append("Idle ").append(formatInactive(inactiveSeconds));
-		}
-		tip.append("</html>");
-		return tip.length() > 13 ? tip.toString() : null;
 	}
 
 	private static Color actionColor(OfferPriceAnalyzer.Action action)
