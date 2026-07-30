@@ -357,7 +357,7 @@ public class IngestClient
 				if ("linked_account_limit".equals(code))
 				{
 					String message = parseErrorMessage(raw,
-						"Free plan supports one OSRS account. Upgrade at flipx.app/pricing or log into your linked account.");
+						"Free plan supports one OSRS account. Upgrade at flipx.gg/pricing or log into your linked account.");
 					throw new IngestPermanentException(message);
 				}
 				String message = humanizeUpgradeMessage(parseErrorMessage(raw, "Pro subscription required for plugin sync"));

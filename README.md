@@ -13,7 +13,7 @@ RuneLite companion plugin for [FlipX](https://flipx.gg). It does two things once
 - **Gradle** (wrapper included — `./gradlew`)
 - [RuneLite](https://runelite.net/) with **Developer Mode** enabled (for sideloading)
 - FlipX web app running locally or deployed, with Supabase configured
-- **Pro subscription** (or `DEV_MODE=true` on the web app for local testing)
+- **Free account** for Market panel + GE copilot pairing; **Pro** for GE upload, import, and cloud portfolio sync (or `DEV_MODE=true` on the web app for local testing)
 
 ## Build
 
@@ -54,7 +54,7 @@ Copies `build/libs/flipx-plugin-1.0.0-all.jar` to `~/.runelite/sideloaded-plugin
 ## Pairing
 
 1. Log in to the web app and open **Settings → RuneLite plugin devices**.
-2. Click **Generate pairing code** (Pro required).
+2. Click **Generate pairing code** (Free — any signed-in account).
 3. In RuneLite, open the **FlipX** sidebar panel.
 4. Enter the 6-digit code and click **Connect**.
 5. The plugin stores an API key locally — it is shown only once during pairing.
@@ -87,7 +87,7 @@ Duplicate events are deduplicated client-side and server-side via `idempotencyKe
 
 ## Market tab
 
-The sidebar panel includes: **Connection** (pairing), **Import history** (Flipping Utilities JSON), **My slots** (live GE dashboard), **Session** (GP/hr widget), **GE setup** (item detail while configuring offers), **Recipe flips** (Ultra+), and **Market** (opportunities, slot optimizer, watchlist).
+The sidebar panel includes: **Connection** (pairing), **Import history** (Flipping Utilities JSON, Pro), **My slots** (live GE dashboard), **Session** (GP/hr widget), **GE setup** (item detail while configuring offers), **Recipe flips** (Pro), and **Market** (opportunities, slot optimizer, watchlist).
 
 Optional GE features (plugin settings):
 
@@ -107,7 +107,7 @@ Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; Flip
 | `GET /api/plugin/session` | Portfolio stats for a time period (`period`: `session`, `1d`, `1w`, `1m`, `1y`, `all`; also `liveSession`, `from`, `to`, `days` as on web). Session includes live slot P&amp;L; other periods are completed flips only. |
 | `GET /api/plugin/analytics/items` | Item profit breakdown for the same period query params as session (`from`, `to`, `liveSession`, `limit`) |
 | `POST /api/plugin/import/flipping-utilities` | Import Flipping Utilities JSON history |
-| `GET /api/plugin/recipes/opportunities` | Ranked recipe flip margins (Ultra+) |
+| `GET /api/plugin/recipes/opportunities` | Ranked recipe flip margins (Pro) |
 | `POST /api/plugin/market/query` | Filtered/ranked opportunities + summary + top ROI movers |
 | `GET /api/plugin/items/search` | Item catalog search (paired Free + Pro) |
 | `GET /api/plugin/items/{id}` | Single-item detail (with tier-scoped chart snapshots) |
@@ -136,7 +136,7 @@ CopilotClient         → per-item copilot with a short TTL cache
 WatchlistClient       → reads/syncs watchlists
 FlipFinderPanel       → tabbed sidebar UI (Sync | Market)
 MarketPanel           → market summary, presets, list, item detail, slots, watchlist
-MarketCopilotOverlay  → display-only GE score/profit overlay (Ultra)
+MarketCopilotOverlay  → display-only GE score/profit overlay (Pro when entitled)
 ```
 
 Events flush every ~8 seconds or when 50 events are queued.

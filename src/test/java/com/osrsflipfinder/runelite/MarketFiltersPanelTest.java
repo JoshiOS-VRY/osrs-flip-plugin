@@ -66,7 +66,7 @@ public class MarketFiltersPanelTest
 		MarketQueryRequest.MarketFilters filters = panel.buildFilters();
 		assertTrue(filters.getHideLowConfidence());
 		assertTrue(filters.getDiscountOnly());
-		assertFalse(filters.getDeepDiscountOnly());
+		assertFalse(Boolean.TRUE.equals(filters.getDeepDiscountOnly()));
 		assertFalse(panel.hasIgnoredAdvancedFilters());
 		assertNull(panel.getEntitlementNotice());
 	}

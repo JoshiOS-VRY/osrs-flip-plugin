@@ -56,6 +56,11 @@ final class DisplayPriceResolver
 		{
 			return GeAssistPricing.PriceSource.WIKI;
 		}
+		DisplayPricesResponse dp = detail.getOpportunity().getDisplayPrices();
+		if (dp != null && "network".equalsIgnoreCase(dp.getSource()))
+		{
+			return GeAssistPricing.PriceSource.NETWORK;
+		}
 		return GeAssistPricing.PriceSource.WIKI;
 	}
 

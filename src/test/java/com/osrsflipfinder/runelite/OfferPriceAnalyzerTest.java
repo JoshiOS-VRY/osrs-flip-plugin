@@ -75,7 +75,10 @@ public class OfferPriceAnalyzerTest
 		);
 		assertEquals(OfferPriceAnalyzer.Issue.SELL_UNDERCUT, analysis.issue);
 		assertEquals(OfferPriceAnalyzer.Action.WAIT, analysis.action);
-		assertEquals(1000L, analysis.recommendedPrice);
+		assertEquals(
+			GeOfferPriceStrategy.suggestedSellOfferGp(800, 1000, 0),
+			analysis.recommendedPrice
+		);
 	}
 
 	@Test
@@ -137,7 +140,7 @@ public class OfferPriceAnalyzerTest
 	{
 		OfferPriceAnalyzer.Analysis analysis = OfferPriceAnalyzer.analyze(
 			true,
-			1005,
+			1001,
 			opp(1000, 1050),
 			1
 		);

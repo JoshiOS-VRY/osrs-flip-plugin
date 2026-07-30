@@ -21,7 +21,7 @@ import net.runelite.client.util.ImageUtil;
 @PluginDescriptor(
 	name = "FlipX",
 	description = "Browse live flip opportunities and sync Grand Exchange offers to FlipX.",
-	tags = {"grand exchange", "flipping", "ge", "portfolio", "market"}
+	tags = {"grand exchange", "flipping", "ge", "portfolio", "market", "copilot"}
 )
 public class OsrsFlipFinderPlugin extends Plugin
 {
