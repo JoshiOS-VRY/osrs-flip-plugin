@@ -41,6 +41,8 @@ class MarketFiltersPanel
 	private final JLabel coinsLabel = PluginUi.caption("Inventory coins: -");
 	private final JButton useCoinsButton = PluginUi.linkButton("Use as max capital");
 	private final JLabel advancedHint = PluginUi.hint("Pro unlocks quality filters, max capital, and more.");
+	private final JButton advancedUpgradeButton = PluginUi.upgradeButton("plugin_filters");
+	private final JPanel advancedHintPanel = new JPanel();
 
 	private final JPanel advancedBody = new JPanel();
 	private PluginUi.CollapsibleSection section;
@@ -61,7 +63,13 @@ class MarketFiltersPanel
 		buildAdvancedBody();
 		wireListeners();
 		advancedBody.setVisible(false);
-		advancedHint.setVisible(true);
+		advancedHintPanel.setLayout(new BoxLayout(advancedHintPanel, BoxLayout.Y_AXIS));
+		PluginUi.transparent(advancedHintPanel);
+		advancedHintPanel.add(advancedHint);
+		PluginUi.fullWidth(advancedUpgradeButton);
+		advancedHintPanel.add(PluginUi.gap(PluginUi.SPACING_XS));
+		advancedHintPanel.add(advancedUpgradeButton);
+		advancedHintPanel.setVisible(true);
 		restoreFromConfig();
 	}
 
@@ -85,7 +93,7 @@ class MarketFiltersPanel
 			body.add(coreFilters);
 			body.add(PluginUi.gap(PluginUi.SPACING_MD));
 			body.add(advancedBody);
-			body.add(advancedHint);
+			body.add(advancedHintPanel);
 
 			section = PluginUi.collapsibleSection("Filters", body, false);
 		}
@@ -97,7 +105,7 @@ class MarketFiltersPanel
 		advancedEnabled = enabled;
 		boolean showAdvanced = enabled || hasIgnoredAdvancedFilters();
 		advancedBody.setVisible(showAdvanced);
-		advancedHint.setVisible(!showAdvanced);
+		advancedHintPanel.setVisible(!showAdvanced);
 
 		hideLowConfidence.setEnabled(showAdvanced);
 		discountOnly.setEnabled(showAdvanced);

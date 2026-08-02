@@ -31,6 +31,7 @@ import javax.swing.border.MatteBorder;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.SwingUtil;
 
 /**
@@ -744,6 +745,28 @@ final class PluginUi
 		button.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		button.setFont(FontManager.getRunescapeSmallFont());
 		return button;
+	}
+
+	/** Opens FlipX pricing with feature attribution for conversion tracking. */
+	static JButton upgradeButton(String feature)
+	{
+		JButton button = new JButton("Upgrade to Pro");
+		styleButton(button);
+		button.setForeground(GOLD);
+		button.setFont(FontManager.getRunescapeSmallFont());
+		button.addActionListener(e ->
+			LinkBrowser.browse(
+				FlipXConstants.baseUrl()
+					+ "/pricing?src=plugin&feature="
+					+ java.net.URLEncoder.encode(feature, java.nio.charset.StandardCharsets.UTF_8)
+			)
+		);
+		return button;
+	}
+
+	static void syncUpgradeButton(JButton button, PluginEntitlements entitlements)
+	{
+		button.setVisible(entitlements == null || !entitlements.hasProAccess());
 	}
 
 	static JButton backButton(Runnable onBack)

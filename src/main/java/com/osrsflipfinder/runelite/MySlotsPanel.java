@@ -45,6 +45,7 @@ class MySlotsPanel extends SidebarContentPanel
 	private final JLabel refreshTimerLabel = PluginUi.caption(" ");
 	private final AtomicBoolean priceFetchInFlight = new AtomicBoolean(false);
 	private final SlotAnalysisStabilizer stabilizer = new SlotAnalysisStabilizer();
+	private final JButton upgradeButton = PluginUi.upgradeButton("plugin_slots");
 	private volatile ScheduledFuture<?> debouncedRefresh;
 	private String lastRenderKey = "";
 	private volatile long nextLocalGeRefreshAtMs;
@@ -99,6 +100,16 @@ class MySlotsPanel extends SidebarContentPanel
 		);
 		PluginUi.fullWidth(portfolioLink);
 		add(portfolioLink);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+		PluginUi.fullWidth(upgradeButton);
+		upgradeButton.setVisible(false);
+		add(upgradeButton);
+
+		opportunitiesClient.addEntitlementsListener(entitlements ->
+			SwingUtilities.invokeLater(() ->
+				PluginUi.syncUpgradeButton(upgradeButton, entitlements)
+			)
+		);
 
 		if (!config.enableUpload())
 		{
@@ -303,7 +314,7 @@ class MySlotsPanel extends SidebarContentPanel
 		{
 			PluginUi.setMultilineCaption(
 				statusLabel,
-				"Local GE tracking only · upgrade to Pro on flipx.gg for portfolio sync"
+				"Local GE tracking only · enable GE upload to sync portfolio"
 			);
 			return;
 		}

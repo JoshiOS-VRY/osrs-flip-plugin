@@ -20,6 +20,7 @@ class ImportPanel extends SidebarContentPanel
 	private final ScheduledExecutorService executorService;
 
 	private final JLabel resultLabel = PluginUi.caption(" ");
+	private final JButton upgradeButton = PluginUi.upgradeButton("plugin_import");
 
 	@Inject
 	ImportPanel(
@@ -62,15 +63,25 @@ class ImportPanel extends SidebarContentPanel
 		card.add(fileButton);
 		card.add(PluginUi.gap(PluginUi.SPACING_SM));
 		card.add(resultLabel);
+		card.add(PluginUi.gap(PluginUi.SPACING_SM));
+		PluginUi.fullWidth(upgradeButton);
+		upgradeButton.setVisible(false);
+		card.add(upgradeButton);
 		add(card);
+
+		opportunitiesClient.addEntitlementsListener(entitlements ->
+			SwingUtilities.invokeLater(() ->
+				PluginUi.syncUpgradeButton(upgradeButton, entitlements)
+			)
+		);
 	}
 
 	private void chooseFile()
 	{
 		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
-		if (entitlements == null || !entitlements.isPluginSync())
+		if (entitlements == null || !entitlements.isPortfolio())
 		{
-			resultLabel.setText("Pro required for plugin import — upgrade on flipx.gg/pricing");
+			resultLabel.setText("Pair your device to import on Free (1 lifetime import).");
 			return;
 		}
 

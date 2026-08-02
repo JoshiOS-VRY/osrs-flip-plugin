@@ -33,6 +33,7 @@ public class GeEventListener
 	private final GeSlotTracker slotTracker;
 	private final ScheduledExecutorService executorService;
 	private final GeTradeHistoryBackfill tradeHistoryBackfill;
+	private final GeOfferHistoryCompressor offerHistoryCompressor;
 
 	private volatile int reconcileGeneration = 0;
 	private volatile ScheduledFuture<?> pendingReconcile;
@@ -48,7 +49,8 @@ public class GeEventListener
 		IngestClient ingestClient,
 		GeSlotTracker slotTracker,
 		ScheduledExecutorService executorService,
-		GeTradeHistoryBackfill tradeHistoryBackfill
+		GeTradeHistoryBackfill tradeHistoryBackfill,
+		GeOfferHistoryCompressor offerHistoryCompressor
 	)
 	{
 		this.client = client;
@@ -57,6 +59,7 @@ public class GeEventListener
 		this.slotTracker = slotTracker;
 		this.executorService = executorService;
 		this.tradeHistoryBackfill = tradeHistoryBackfill;
+		this.offerHistoryCompressor = offerHistoryCompressor;
 	}
 
 	void addOfferChangeListener(Runnable listener)
@@ -197,6 +200,10 @@ public class GeEventListener
 				if (accountHash != -1)
 				{
 					emitSlotCleared(slot, previous, accountHash);
+					String displayName = client.getLocalPlayer() != null
+						? client.getLocalPlayer().getName()
+						: null;
+					scheduleDeferredReconcile(++reconcileGeneration, accountHash, displayName);
 				}
 			}
 			lastKnownBySlot.remove(slot);
@@ -265,6 +272,11 @@ public class GeEventListener
 
 		if (mapped != null)
 		{
+			if (offerHistoryCompressor.shouldSkipDuplicateProgress(mapped))
+			{
+				return;
+			}
+			offerHistoryCompressor.compressAndTrack(mapped);
 			ingestClient.enqueue(mapped);
 		}
 	}
@@ -292,6 +304,7 @@ public class GeEventListener
 
 		if (mapped != null)
 		{
+			offerHistoryCompressor.compressAndTrack(mapped);
 			ingestClient.enqueue(mapped);
 		}
 	}

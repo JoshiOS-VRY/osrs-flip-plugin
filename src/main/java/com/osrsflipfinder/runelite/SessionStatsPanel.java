@@ -22,6 +22,7 @@ class SessionStatsPanel extends SidebarContentPanel
 	private static final String CONFIG_PORTFOLIO_PERIOD = "portfolioPeriodId";
 
 	private final PortfolioClient portfolioClient;
+	private final OpportunitiesClient opportunitiesClient;
 	private final ConfigManager configManager;
 	private final ItemManager itemManager;
 
@@ -41,16 +42,20 @@ class SessionStatsPanel extends SidebarContentPanel
 	private final JPanel itemList = PluginUi.listContainer();
 	private final JLabel itemsEmptyLabel = PluginUi.caption("Completed flips appear here");
 	private final JLabel statusLabel = PluginUi.caption("Pair and enable GE upload");
+	private final JLabel historyMeterLabel = PluginUi.caption(" ");
 	private final JLabel refreshTimerLabel = PluginUi.caption(" ");
+	private final JButton upgradeButton = PluginUi.upgradeButton("plugin_session");
 
 	@Inject
 	SessionStatsPanel(
 		PortfolioClient portfolioClient,
+		OpportunitiesClient opportunitiesClient,
 		ConfigManager configManager,
 		ItemManager itemManager
 	)
 	{
 		this.portfolioClient = portfolioClient;
+		this.opportunitiesClient = opportunitiesClient;
 		this.configManager = configManager;
 		this.itemManager = itemManager;
 
@@ -61,6 +66,9 @@ class SessionStatsPanel extends SidebarContentPanel
 		periodCombo.addActionListener(e -> onPeriodSelected());
 
 		add(PluginUi.labeledField("Time period", periodCombo));
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+		historyMeterLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		add(historyMeterLabel);
 		add(PluginUi.gap(PluginUi.SPACING_SM));
 		add(PluginUi.sessionProfitHero(profitLabel, profitHeroCaption, profitSubLabel));
 		add(PluginUi.gap(PluginUi.SPACING_SM));
@@ -89,9 +97,17 @@ class SessionStatsPanel extends SidebarContentPanel
 		PluginUi.fullWidth(portfolioLink);
 		add(portfolioLink);
 		add(PluginUi.gap(PluginUi.SPACING_XS));
+		PluginUi.fullWidth(upgradeButton);
+		upgradeButton.setVisible(false);
+		add(upgradeButton);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
 		refreshTimerLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		add(refreshTimerLabel);
 		add(statusLabel);
+
+		opportunitiesClient.addEntitlementsListener(entitlements ->
+			SwingUtilities.invokeLater(this::updateHistoryMeter)
+		);
 
 		portfolioClient.setSessionListener(session ->
 			SwingUtilities.invokeLater(() -> render(session, portfolioClient.getLatestSessionItems()))
@@ -109,8 +125,30 @@ class SessionStatsPanel extends SidebarContentPanel
 
 		loadSavedPeriod();
 		applyPeriodLabels(portfolioClient.getPortfolioPeriod());
+		updateHistoryMeter();
 		fillMetricsPlaceholder();
 		fillHeroPlaceholders();
+	}
+
+	private void updateHistoryMeter()
+	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		PluginUi.syncUpgradeButton(upgradeButton, entitlements);
+		if (entitlements == null)
+		{
+			PluginUi.setCardCaption(historyMeterLabel, "");
+			return;
+		}
+		Integer retention = entitlements.getHistoryRetentionDays();
+		if (retention != null && retention > 0 && !entitlements.hasProAccess())
+		{
+			PluginUi.setCardCaption(
+				historyMeterLabel,
+				retention + " of " + retention + " days shown on Free · upgrade for full history"
+			);
+			return;
+		}
+		PluginUi.setCardCaption(historyMeterLabel, "");
 	}
 
 	private void loadSavedPeriod()

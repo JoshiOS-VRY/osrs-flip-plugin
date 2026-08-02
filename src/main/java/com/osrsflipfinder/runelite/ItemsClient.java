@@ -29,6 +29,7 @@ public class ItemsClient
 	private final FlipFinderConfig config;
 	private final LocalCacheStore cacheStore;
 	private final Map<Integer, MemoryEntry> memory = new ConcurrentHashMap<>();
+	private final Map<Integer, Boolean> historyLoaded = new ConcurrentHashMap<>();
 	private final CopyOnWriteArrayList<IntConsumer> updateListeners = new CopyOnWriteArrayList<>();
 
 	private volatile long refreshIntervalMs = MIN_TTL_MS;
@@ -99,7 +100,12 @@ public class ItemsClient
 		{
 			return true;
 		}
-		return System.currentTimeMillis() - entry.fetchedAtMs > refreshIntervalMs;
+		long now = System.currentTimeMillis();
+		if (nextWikiRefreshAtMs > 0)
+		{
+			return now >= nextWikiRefreshAtMs;
+		}
+		return now - entry.fetchedAtMs > refreshIntervalMs;
 	}
 
 	ItemDetailResponse fetch(int itemId) throws IOException
@@ -119,6 +125,7 @@ public class ItemsClient
 		}
 
 		String cacheKey = "item-" + itemId;
+		String historyCacheKey = "item-history-" + itemId;
 		if (!itemFetchInProgress.compareAndSet(false, true))
 		{
 			ItemDetailResponse waiting = peek(itemId);
@@ -130,32 +137,123 @@ public class ItemsClient
 		}
 		try
 		{
-			ItemDetailResponse response = apiClient.get("/api/plugin/items/" + itemId, ItemDetailResponse.class);
-			if (response != null)
+			ItemDetailResponse detail = peek(itemId);
+			if (detail == null)
 			{
-				long updatedAt = response.getMeta() != null ? response.getMeta().getLastUpdatedMs() : 0L;
-				putMemory(itemId, response, updatedAt, true);
-				scheduleWikiRefreshFromItemMeta(response.getMeta());
-				cacheStore.write(cacheKey, response, config);
+				detail = loadDiskDetail(cacheKey);
 			}
-			return response;
+			if (detail == null)
+			{
+				detail = new ItemDetailResponse();
+			}
+
+			boolean needsHistory = forceRefresh || !Boolean.TRUE.equals(historyLoaded.get(itemId));
+			if (needsHistory)
+			{
+				String historyPath = forceRefresh
+					? "/api/plugin/items/" + itemId + "/history?refresh=1"
+					: "/api/plugin/items/" + itemId + "/history";
+				ItemDetailHistoryResponse history = apiClient.get(historyPath, ItemDetailHistoryResponse.class);
+				if (history != null)
+				{
+					applyHistory(detail, history);
+					historyLoaded.put(itemId, true);
+					cacheStore.write(historyCacheKey, history, config);
+				}
+			}
+
+			ItemDetailLiveResponse live = apiClient.get(
+				"/api/plugin/items/" + itemId + "/live",
+				ItemDetailLiveResponse.class
+			);
+			if (live == null || live.getOpportunity() == null)
+			{
+				throw new IOException("Item not found");
+			}
+
+			applyLive(detail, live);
+
+			long updatedAt = detail.getMeta() != null ? detail.getMeta().getLastUpdatedMs() : 0L;
+			putMemory(itemId, detail, updatedAt, true);
+			scheduleWikiRefreshFromItemMeta(detail.getMeta());
+			cacheStore.write(cacheKey, detail, config);
+			return detail;
 		}
 		catch (IOException ex)
 		{
-			LocalCacheStore.CachedEntry<ItemDetailResponse> cached = cacheStore.read(cacheKey, ItemDetailResponse.class, config);
+			ItemDetailResponse cached = loadDiskDetail(cacheKey);
 			if (cached != null)
 			{
-				long updatedAt = cached.getPayload().getMeta() != null
-					? cached.getPayload().getMeta().getLastUpdatedMs()
+				long updatedAt = cached.getMeta() != null
+					? cached.getMeta().getLastUpdatedMs()
 					: 0L;
-				putMemory(itemId, cached.getPayload(), updatedAt, false);
-				return cached.getPayload();
+				putMemory(itemId, cached, updatedAt, false);
+				return cached;
 			}
 			throw ex;
 		}
 		finally
 		{
 			itemFetchInProgress.set(false);
+		}
+	}
+
+	private ItemDetailResponse loadDiskDetail(String cacheKey)
+	{
+		LocalCacheStore.CachedEntry<ItemDetailResponse> cached = cacheStore.read(
+			cacheKey,
+			ItemDetailResponse.class,
+			config
+		);
+		return cached != null ? cached.getPayload() : null;
+	}
+
+	private static void applyHistory(ItemDetailResponse detail, ItemDetailHistoryResponse history)
+	{
+		detail.setSnapshots(history.getSnapshots());
+		detail.setMarketRegime(history.getMarketRegime());
+		if (history.getMeta() != null)
+		{
+			if (detail.getMeta() == null)
+			{
+				detail.setMeta(history.getMeta());
+			}
+			else
+			{
+				detail.getMeta().setChartDays(history.getMeta().getChartDays());
+			}
+		}
+		else if (history.getChartDays() > 0)
+		{
+			ItemDetailResponse.ItemDetailMeta meta = detail.getMeta();
+			if (meta == null)
+			{
+				meta = new ItemDetailResponse.ItemDetailMeta();
+				detail.setMeta(meta);
+			}
+			meta.setChartDays(history.getChartDays());
+		}
+	}
+
+	private static void applyLive(ItemDetailResponse detail, ItemDetailLiveResponse live)
+	{
+		detail.setOpportunity(live.getOpportunity());
+		detail.setDisplayPrices(live.getDisplayPrices());
+		detail.setNetworkIntel(live.getNetworkIntel());
+		if (live.getMeta() != null)
+		{
+			ItemDetailResponse.ItemDetailMeta meta = detail.getMeta();
+			if (meta == null)
+			{
+				detail.setMeta(live.getMeta());
+			}
+			else
+			{
+				meta.setLastUpdatedMs(live.getMeta().getLastUpdatedMs());
+				meta.setNextPublishInMs(live.getMeta().getNextPublishInMs());
+				meta.setNextWikiPublishAtMs(live.getMeta().getNextWikiPublishAtMs());
+				meta.setPhaseConfidence(live.getMeta().getPhaseConfidence());
+			}
 		}
 	}
 
@@ -249,6 +347,7 @@ public class ItemsClient
 	void clearMemory()
 	{
 		memory.clear();
+		historyLoaded.clear();
 	}
 
 	private void putMemory(int itemId, ItemDetailResponse detail, long snapshotUpdatedAtMs, boolean notify)

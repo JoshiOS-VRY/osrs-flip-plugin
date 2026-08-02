@@ -29,6 +29,7 @@ class RecipeFlipsPanel extends SidebarContentPanel
 	private final JPanel list = PluginUi.listContainer();
 	private final JLabel statusLabel = PluginUi.caption(" ");
 	private final JLabel refreshTimerLabel = PluginUi.caption("Updates when you open this tab");
+	private final JButton upgradeButton = PluginUi.upgradeButton("plugin_recipes");
 
 	@Inject
 	RecipeFlipsPanel(
@@ -61,8 +62,16 @@ class RecipeFlipsPanel extends SidebarContentPanel
 		);
 		PluginUi.fullWidth(link);
 		add(link);
+		add(PluginUi.gap(PluginUi.SPACING_XS));
+		PluginUi.fullWidth(upgradeButton);
+		upgradeButton.setVisible(false);
+		add(upgradeButton);
 		opportunitiesClient.addEntitlementsListener(entitlements ->
-			SwingUtilities.invokeLater(this::onEntitlementsUpdated)
+			SwingUtilities.invokeLater(() ->
+			{
+				PluginUi.syncUpgradeButton(upgradeButton, entitlements);
+				onEntitlementsUpdated();
+			})
 		);
 	}
 
@@ -117,6 +126,10 @@ class RecipeFlipsPanel extends SidebarContentPanel
 		{
 			statusLabel.setText("Pro required");
 			list.add(PluginUi.emptyState("Recipe flips need a Pro subscription."));
+			JButton upgrade = PluginUi.upgradeButton("plugin_recipes");
+			PluginUi.fullWidth(upgrade);
+			list.add(PluginUi.gap(PluginUi.SPACING_SM));
+			list.add(upgrade);
 			revalidate();
 			repaint();
 			return;
@@ -139,6 +152,10 @@ class RecipeFlipsPanel extends SidebarContentPanel
 					{
 						statusLabel.setText("Pro required");
 						list.add(PluginUi.emptyState("Recipe flips need a Pro subscription."));
+						JButton upgrade = PluginUi.upgradeButton("plugin_recipes");
+						PluginUi.fullWidth(upgrade);
+						list.add(PluginUi.gap(PluginUi.SPACING_SM));
+						list.add(upgrade);
 					}
 					else
 					{

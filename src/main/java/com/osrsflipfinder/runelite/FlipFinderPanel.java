@@ -69,6 +69,8 @@ public class FlipFinderPanel extends PluginPanel
 	private final JButton networkButton = PluginUi.linkButton("Network opt-in");
 	private final JButton privacyButton = PluginUi.linkButton("Privacy");
 	private final JLabel pairingSuccessLabel = PluginUi.caption("");
+	private final JLabel trialCountdownLabel = PluginUi.caption("");
+	private final JButton headerUpgradeButton = PluginUi.upgradeButton("plugin_header");
 
 	private final JPanel pairingForm = new JPanel();
 	private final JPanel connectedSummary = new JPanel();
@@ -137,7 +139,10 @@ public class FlipFinderPanel extends PluginPanel
 			"v" + PLUGIN_VERSION + " | Market & portfolio sync",
 			statusBadge
 		));
-		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_SM));
+		headerUpgradeButton.setVisible(false);
+		PluginUi.fullWidth(headerUpgradeButton);
+		layoutPanel.add(headerUpgradeButton);
+		layoutPanel.add(PluginUi.gap(PluginUi.SPACING_XS));
 		layoutPanel.add(PluginUi.discordCommunityBanner(
 			() -> LinkBrowser.browse(CommunityLinks.DISCORD_INVITE_URL)
 		));
@@ -426,10 +431,10 @@ public class FlipFinderPanel extends PluginPanel
 				"On flipx.gg: Settings → RuneLite, generate a pairing code, then enter it below."
 			),
 			PluginUi.hint(
-				"Free: Flip terminal + GE copilot when paired. Pro: GE upload, portfolio sync, and import."
+				"Free: GE sync, 7-day portfolio, and copilot when paired. Pro: full history, multi-account, and export."
 			),
 			PluginUi.hint(
-				"Enable the Market panel (or GE upload for Pro sync) in plugin settings first."
+				"Enable GE upload (or the Market panel) in plugin settings first."
 			),
 			PluginUi.labeledField("Pairing code", codeField),
 			connectButton
@@ -442,12 +447,14 @@ public class FlipFinderPanel extends PluginPanel
 		PluginUi.transparent(connectedSummary);
 		JPanel summaryInner = PluginUi.verticalStack(
 			metaLabel,
+			trialCountdownLabel,
 			queueLabel,
 			lastSyncLabel,
 			pairingSuccessLabel,
 			disconnectButton
 		);
 		PluginUi.fullWidthGrow(metaLabel);
+		PluginUi.fullWidthGrow(trialCountdownLabel);
 		PluginUi.fullWidthGrow(queueLabel);
 		PluginUi.fullWidthGrow(lastSyncLabel);
 		PluginUi.fullWidthGrow(pairingSuccessLabel);
@@ -484,6 +491,8 @@ public class FlipFinderPanel extends PluginPanel
 			updateStatusBadge(state);
 			updateConnectionLayout(state);
 			updateMeta();
+			updateTrialCountdown();
+			headerUpgradeButton.setVisible(state == PluginState.UPGRADE_REQUIRED);
 			PluginUi.setCardCaption(queueLabel, "Queue: " + ingestClient.getQueueSize() + " events");
 			disconnectButton.setEnabled(PairingCredentials.isPaired(config));
 			applySectionActiveStates();
@@ -569,7 +578,7 @@ public class FlipFinderPanel extends PluginPanel
 					onError(null);
 					PluginUi.setCardCaption(
 						pairingSuccessLabel,
-						"Paired. Free accounts can use Flip and GE copilot; upgrade to Pro on flipx.gg for sync."
+						"Paired. GE sync and 7-day portfolio are active on Free — upgrade for full history."
 					);
 					refreshUi();
 					geEventListener.backfillAllSlots();
@@ -679,11 +688,40 @@ public class FlipFinderPanel extends PluginPanel
 		{
 			return "";
 		}
-		if (entitlements.isPluginSync())
+		if (entitlements.isTrialing())
 		{
-			return " · Pro sync";
+			Integer days = entitlements.getTrialDaysRemaining();
+			if (days != null && days > 0)
+			{
+				return " · Pro trial (" + days + "d left)";
+			}
+			return " · Pro trial";
 		}
-		return " · Free (browse + copilot)";
+		if (entitlements.hasProAccess())
+		{
+			return " · Pro";
+		}
+		return " · Free (sync + 7-day history)";
+	}
+
+	private void updateTrialCountdown()
+	{
+		PluginEntitlements entitlements = opportunitiesClient.getEntitlements();
+		if (entitlements == null || !entitlements.isTrialing())
+		{
+			PluginUi.setCardCaption(trialCountdownLabel, "");
+			return;
+		}
+		Integer days = entitlements.getTrialDaysRemaining();
+		if (days != null && days > 0)
+		{
+			PluginUi.setCardCaption(
+				trialCountdownLabel,
+				"Pro trial: " + days + " day" + (days == 1 ? "" : "s") + " left — full history unlocked"
+			);
+			return;
+		}
+		PluginUi.setCardCaption(trialCountdownLabel, "Pro trial active — full history unlocked");
 	}
 
 	private void onSyncStats(IngestClient.SyncStats stats)

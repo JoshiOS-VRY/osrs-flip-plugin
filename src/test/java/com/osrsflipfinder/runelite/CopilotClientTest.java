@@ -54,7 +54,12 @@ public class CopilotClientTest
 		server.shutdown();
 	}
 
-	private static String itemBody(int itemId, String name, int score)
+	private static String historyBody()
+	{
+		return "{\"snapshots\":[],\"chartDays\":7,\"meta\":{\"chartDays\":7}}";
+	}
+
+	private static String liveBody(int itemId, String name, int score)
 	{
 		return "{"
 			+ "\"opportunity\":{"
@@ -71,36 +76,40 @@ public class CopilotClientTest
 			+ "}";
 	}
 
-	@Test
-	public void fetchCachesByItemId() throws IOException
+	private void enqueueItemResponses(int itemId, String name, int score)
 	{
 		server.enqueue(new MockResponse()
 			.setResponseCode(200)
-			.setBody(itemBody(4151, "Abyssal whip", 72)));
+			.setBody(historyBody()));
+		server.enqueue(new MockResponse()
+			.setResponseCode(200)
+			.setBody(liveBody(itemId, name, score)));
+	}
+
+	@Test
+	public void fetchCachesByItemId() throws IOException
+	{
+		enqueueItemResponses(4151, "Abyssal whip", 72);
 
 		CopilotItem first = copilotClient.fetch(4151);
 		CopilotItem second = copilotClient.fetch(4151);
 
 		assertEquals("Abyssal whip", first.getName());
 		assertEquals(72, second.getOpportunityScore());
-		assertEquals(1, server.getRequestCount());
+		assertEquals(2, server.getRequestCount());
 	}
 
 	@Test
 	public void fetchBulkPopulatesCache() throws IOException
 	{
-		server.enqueue(new MockResponse()
-			.setResponseCode(200)
-			.setBody(itemBody(4151, "Abyssal whip", 72)));
-		server.enqueue(new MockResponse()
-			.setResponseCode(200)
-			.setBody(itemBody(11802, "Armadyl godsword", 65)));
+		enqueueItemResponses(4151, "Abyssal whip", 72);
+		enqueueItemResponses(11802, "Armadyl godsword", 65);
 
 		List<CopilotItem> items = copilotClient.fetchBulk(Arrays.asList(4151, 11802));
 
 		assertEquals(2, items.size());
-		assertEquals(2, server.getRequestCount());
+		assertEquals(4, server.getRequestCount());
 		assertEquals("Abyssal whip", copilotClient.fetch(4151).getName());
-		assertEquals(2, server.getRequestCount());
+		assertEquals(4, server.getRequestCount());
 	}
 }
