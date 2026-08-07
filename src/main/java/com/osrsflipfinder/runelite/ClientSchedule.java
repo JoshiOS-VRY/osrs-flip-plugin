@@ -87,6 +87,55 @@ final class ClientSchedule
 		return fallback;
 	}
 
+	/** Decay frozen publish countdown (matches web {@code adjustPublishMetaForClient}). */
+	static ItemDetailResponse.ItemDetailMeta decayItemMeta(
+		ItemDetailResponse.ItemDetailMeta meta,
+		long storedAtMs,
+		long nowMs
+	)
+	{
+		if (meta == null)
+		{
+			return null;
+		}
+
+		double conf = meta.getPhaseConfidence();
+		if (conf < PHASE_CONFIDENCE_THRESHOLD)
+		{
+			return meta;
+		}
+
+		Long wikiAt = meta.getNextWikiPublishAtMs();
+		if (wikiAt != null && wikiAt > 0)
+		{
+			ItemDetailResponse.ItemDetailMeta adjusted = copyMeta(meta);
+			adjusted.setNextPublishInMs(Math.max(0L, wikiAt - nowMs));
+			return adjusted;
+		}
+
+		Long nextIn = meta.getNextPublishInMs();
+		if (nextIn == null)
+		{
+			return meta;
+		}
+
+		long elapsed = Math.max(0L, nowMs - storedAtMs);
+		ItemDetailResponse.ItemDetailMeta adjusted = copyMeta(meta);
+		adjusted.setNextPublishInMs(Math.max(0L, nextIn - elapsed));
+		return adjusted;
+	}
+
+	private static ItemDetailResponse.ItemDetailMeta copyMeta(ItemDetailResponse.ItemDetailMeta meta)
+	{
+		ItemDetailResponse.ItemDetailMeta copy = new ItemDetailResponse.ItemDetailMeta();
+		copy.setChartDays(meta.getChartDays());
+		copy.setLastUpdatedMs(meta.getLastUpdatedMs());
+		copy.setNextPublishInMs(meta.getNextPublishInMs());
+		copy.setNextWikiPublishAtMs(meta.getNextWikiPublishAtMs());
+		copy.setPhaseConfidence(meta.getPhaseConfidence());
+		return copy;
+	}
+
 	static long msUntilNextFetch(long nextFetchAtMs, long nowMs)
 	{
 		return Math.max(0, nextFetchAtMs - nowMs);

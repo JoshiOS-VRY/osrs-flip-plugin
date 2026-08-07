@@ -44,4 +44,36 @@ public class ClientScheduleTest
 		long at = ClientSchedule.computeNextFetchAtMs(meta, 500L, 60_000L, now);
 		assertEquals(now + 60_000L, at);
 	}
+
+	@Test
+	public void decayItemMetaUsesAbsoluteWikiTime()
+	{
+		long storedAt = 1_000_000L;
+		long now = storedAt + 10_000L;
+		ItemDetailResponse.ItemDetailMeta meta = new ItemDetailResponse.ItemDetailMeta();
+		meta.setNextWikiPublishAtMs(now + 30_000L);
+		meta.setNextPublishInMs(40_000L);
+		meta.setPhaseConfidence(0.9);
+
+		ItemDetailResponse.ItemDetailMeta adjusted =
+			ClientSchedule.decayItemMeta(meta, storedAt, now);
+
+		assertEquals(30_000L, (long) adjusted.getNextPublishInMs());
+		assertEquals(40_000L, (long) meta.getNextPublishInMs());
+	}
+
+	@Test
+	public void decayItemMetaSubtractsCacheAge()
+	{
+		long storedAt = 1_000_000L;
+		long now = storedAt + 12_000L;
+		ItemDetailResponse.ItemDetailMeta meta = new ItemDetailResponse.ItemDetailMeta();
+		meta.setNextPublishInMs(45_000L);
+		meta.setPhaseConfidence(0.9);
+
+		ItemDetailResponse.ItemDetailMeta adjusted =
+			ClientSchedule.decayItemMeta(meta, storedAt, now);
+
+		assertEquals(33_000L, (long) adjusted.getNextPublishInMs());
+	}
 }

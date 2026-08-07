@@ -297,9 +297,15 @@ public class MarketPanel extends SidebarContentPanel
 		refreshTimerLabel.setText(marketTimer);
 		slotsPanel.updateMarketRefreshTimer(marketTimer);
 		watchlistPanel.updateMarketRefreshTimer(marketTimer);
-		if (CARD_DETAIL.equals(activeCard))
+		if (CARD_DETAIL.equals(activeCard) && detailItemId != null)
 		{
-			detailView.updateRefreshStatus(marketTimer, readDetailLastUpdatedMs());
+			itemsClient.watchItem(detailItemId);
+			if (itemsClient.isStale(detailItemId))
+			{
+				scheduleDetailItemFetch();
+			}
+			String detailTimer = formatDetailRefreshTimer(paired, detailItemId);
+			detailView.updateRefreshStatus(detailTimer, readDetailLastUpdatedMs());
 		}
 	}
 
@@ -313,6 +319,19 @@ public class MarketPanel extends SidebarContentPanel
 			opportunitiesClient.getNextRefreshAtMs(),
 			opportunitiesClient.isActive(),
 			opportunitiesClient.isFetchInProgress()
+		);
+	}
+
+	private String formatDetailRefreshTimer(boolean paired, int itemId)
+	{
+		if (!config.enableMarketPanel() || !paired)
+		{
+			return " ";
+		}
+		return RefreshCountdown.formatPolling(
+			itemsClient.getNextFetchAtMs(itemId),
+			true,
+			itemsClient.isItemFetchInProgress(itemId)
 		);
 	}
 
@@ -337,13 +356,13 @@ public class MarketPanel extends SidebarContentPanel
 
 	private void syncDetailRefreshUi()
 	{
-		if (!CARD_DETAIL.equals(activeCard))
+		if (!CARD_DETAIL.equals(activeCard) || detailItemId == null)
 		{
 			return;
 		}
 		boolean paired = PairingCredentials.isPairedForCurrentApi(config);
-		String marketTimer = formatMarketRefreshTimer(paired);
-		detailView.updateRefreshStatus(marketTimer, readDetailLastUpdatedMs());
+		String detailTimer = formatDetailRefreshTimer(paired, detailItemId);
+		detailView.updateRefreshStatus(detailTimer, readDetailLastUpdatedMs());
 	}
 
 	private void scheduleDetailItemFetch()
@@ -836,9 +855,14 @@ public class MarketPanel extends SidebarContentPanel
 
 	void showList()
 	{
+		Integer previousDetail = detailItemId;
 		activeCard = CARD_LIST;
 		detailItemId = null;
 		detailReturnCard = CARD_LIST;
+		if (previousDetail != null)
+		{
+			itemsClient.unwatchItem(previousDetail);
+		}
 		cardStack.showCard(listCard);
 		refreshCardLayout();
 	}
@@ -869,6 +893,7 @@ public class MarketPanel extends SidebarContentPanel
 		activeCard = CARD_DETAIL;
 		detailReturnCard = returnCard;
 		detailItemId = opp.getId();
+		itemsClient.watchItem(opp.getId());
 
 		cardStack.showCard(detailView);
 		scrollToTop.run();

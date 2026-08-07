@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executors;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -43,7 +44,12 @@ public class CopilotClientTest
 			new Gson()
 		);
 		LocalCacheStore cacheStore = new LocalCacheStore(new Gson());
-		itemsClient = new ItemsClient(apiClient, config, cacheStore);
+		itemsClient = new ItemsClient(
+			apiClient,
+			config,
+			cacheStore,
+			Executors.newSingleThreadScheduledExecutor()
+		);
 		copilotClient = new CopilotClient(itemsClient);
 	}
 

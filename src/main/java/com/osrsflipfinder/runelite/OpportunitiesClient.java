@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 public class OpportunitiesClient
 {
 	private static final int MIN_REFRESH_SECONDS = 15;
-	private static final int POLL_TICK_SECONDS = 5;
+	private static final int POLL_TICK_SECONDS = 1;
 	/** Tier changes sync while paired, independent of wiki-aligned market refresh. */
 	private static final int ENTITLEMENTS_POLL_SECONDS = 20;
 
@@ -219,6 +219,7 @@ public class OpportunitiesClient
 	{
 		pollEntitlementsIfDue();
 		tickMarketIfDue();
+		itemsClient.tickDueRefreshes();
 	}
 
 	private void pollEntitlementsIfDue()

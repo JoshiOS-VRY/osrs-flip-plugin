@@ -14,26 +14,50 @@ final class CopilotRefreshLabels
 		boolean geCopilotActive
 	)
 	{
+		return pollingLine(opportunities, items, paired, geCopilotActive, -1);
+	}
+
+	static String pollingLine(
+		OpportunitiesClient opportunities,
+		ItemsClient items,
+		boolean paired,
+		boolean geCopilotActive,
+		int itemId
+	)
+	{
 		if (!paired)
 		{
 			return " ";
 		}
 
-		long nextAt = resolveNextRefreshAtMs(opportunities, items);
+		long nextAt = resolveNextRefreshAtMs(opportunities, items, itemId);
 		boolean pollingActive =
 			opportunities.isActive() || geCopilotActive;
+		boolean itemFetchBusy = itemId > 0
+			? items.isItemFetchInProgress(itemId)
+			: items.isItemFetchInProgress();
 		return RefreshCountdown.formatPolling(
 			nextAt,
 			pollingActive,
-			opportunities.isFetchInProgress() || items.isItemFetchInProgress()
+			opportunities.isFetchInProgress() || itemFetchBusy
 		);
 	}
 
 	private static long resolveNextRefreshAtMs(
 		OpportunitiesClient opportunities,
-		ItemsClient items
+		ItemsClient items,
+		int itemId
 	)
 	{
+		if (itemId > 0)
+		{
+			long itemNext = items.getNextFetchAtMs(itemId);
+			if (itemNext > System.currentTimeMillis())
+			{
+				return itemNext;
+			}
+		}
+
 		long marketNext = opportunities.getNextRefreshAtMs();
 		if (marketNext > System.currentTimeMillis())
 		{

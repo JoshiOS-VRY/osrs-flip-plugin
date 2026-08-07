@@ -91,6 +91,8 @@ public class MarketCopilotOverlay extends OverlayPanel
 			return null;
 		}
 
+		itemsClient.watchItem(itemId);
+
 		if (itemsClient.isStale(itemId))
 		{
 			long now = System.currentTimeMillis();
@@ -193,7 +195,8 @@ public class MarketCopilotOverlay extends OverlayPanel
 			opportunitiesClient,
 			itemsClient,
 			true,
-			true
+			true,
+			itemId
 		);
 		if (refreshLine != null && !refreshLine.isBlank())
 		{

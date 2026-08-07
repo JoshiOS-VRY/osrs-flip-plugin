@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntConsumer;
 import javax.inject.Inject;
@@ -28,21 +30,29 @@ public class ItemsClient
 	private final PluginApiClient apiClient;
 	private final FlipFinderConfig config;
 	private final LocalCacheStore cacheStore;
+	private final ScheduledExecutorService executorService;
 	private final Map<Integer, MemoryEntry> memory = new ConcurrentHashMap<>();
 	private final Map<Integer, Boolean> historyLoaded = new ConcurrentHashMap<>();
+	private final Map<Integer, AtomicBoolean> fetchLocks = new ConcurrentHashMap<>();
+	private final Set<Integer> watchedItemIds = ConcurrentHashMap.newKeySet();
 	private final CopyOnWriteArrayList<IntConsumer> updateListeners = new CopyOnWriteArrayList<>();
 
 	private volatile long refreshIntervalMs = MIN_TTL_MS;
 	private volatile long publishLeadMs = 500L;
 	private volatile long nextWikiRefreshAtMs = 0L;
-	private final AtomicBoolean itemFetchInProgress = new AtomicBoolean(false);
 
 	@Inject
-	ItemsClient(PluginApiClient apiClient, FlipFinderConfig config, LocalCacheStore cacheStore)
+	ItemsClient(
+		PluginApiClient apiClient,
+		FlipFinderConfig config,
+		LocalCacheStore cacheStore,
+		ScheduledExecutorService executorService
+	)
 	{
 		this.apiClient = apiClient;
 		this.config = config;
 		this.cacheStore = cacheStore;
+		this.executorService = executorService;
 	}
 
 	void setRefreshIntervalMs(long intervalMs)
@@ -63,9 +73,49 @@ public class ItemsClient
 		return nextWikiRefreshAtMs;
 	}
 
+	long getNextFetchAtMs(int itemId)
+	{
+		long now = System.currentTimeMillis();
+		MemoryEntry entry = memory.get(itemId);
+		if (entry != null)
+		{
+			return computeNextFetchAtMs(entry, now);
+		}
+		return nextWikiRefreshAtMs;
+	}
+
 	boolean isItemFetchInProgress()
 	{
-		return itemFetchInProgress.get();
+		for (AtomicBoolean lock : fetchLocks.values())
+		{
+			if (lock.get())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	boolean isItemFetchInProgress(int itemId)
+	{
+		AtomicBoolean lock = fetchLocks.get(itemId);
+		return lock != null && lock.get();
+	}
+
+	void watchItem(int itemId)
+	{
+		if (itemId > 0)
+		{
+			watchedItemIds.add(itemId);
+		}
+	}
+
+	void unwatchItem(int itemId)
+	{
+		if (itemId > 0)
+		{
+			watchedItemIds.remove(itemId);
+		}
 	}
 
 	void addUpdateListener(IntConsumer listener)
@@ -101,11 +151,19 @@ public class ItemsClient
 			return true;
 		}
 		long now = System.currentTimeMillis();
-		if (nextWikiRefreshAtMs > 0)
+		return now >= computeNextFetchAtMs(entry, now);
+	}
+
+	/** Background refresh for items the UI is actively watching (GE overlay, item detail). */
+	void tickDueRefreshes()
+	{
+		for (int itemId : watchedItemIds)
 		{
-			return now >= nextWikiRefreshAtMs;
+			if (isStale(itemId))
+			{
+				scheduleFetchAsync(itemId, false);
+			}
 		}
-		return now - entry.fetchedAtMs > refreshIntervalMs;
 	}
 
 	ItemDetailResponse fetch(int itemId) throws IOException
@@ -124,9 +182,8 @@ public class ItemsClient
 			}
 		}
 
-		String cacheKey = "item-" + itemId;
-		String historyCacheKey = "item-history-" + itemId;
-		if (!itemFetchInProgress.compareAndSet(false, true))
+		AtomicBoolean lock = fetchLocks.computeIfAbsent(itemId, ignored -> new AtomicBoolean(false));
+		if (!lock.compareAndSet(false, true))
 		{
 			ItemDetailResponse waiting = peek(itemId);
 			if (waiting != null)
@@ -135,6 +192,9 @@ public class ItemsClient
 			}
 			throw new IOException("Item fetch already in progress");
 		}
+
+		String cacheKey = "item-" + itemId;
+		String historyCacheKey = "item-history-" + itemId;
 		try
 		{
 			ItemDetailResponse detail = peek(itemId);
@@ -175,7 +235,6 @@ public class ItemsClient
 
 			long updatedAt = detail.getMeta() != null ? detail.getMeta().getLastUpdatedMs() : 0L;
 			putMemory(itemId, detail, updatedAt, true);
-			scheduleWikiRefreshFromItemMeta(detail.getMeta());
 			cacheStore.write(cacheKey, detail, config);
 			return detail;
 		}
@@ -194,8 +253,27 @@ public class ItemsClient
 		}
 		finally
 		{
-			itemFetchInProgress.set(false);
+			lock.set(false);
 		}
+	}
+
+	private void scheduleFetchAsync(int itemId, boolean forceRefresh)
+	{
+		if (isItemFetchInProgress(itemId))
+		{
+			return;
+		}
+		executorService.execute(() ->
+		{
+			try
+			{
+				fetch(itemId, forceRefresh);
+			}
+			catch (IOException ex)
+			{
+				log.debug("Scheduled item refresh failed for {}", itemId, ex);
+			}
+		});
 	}
 
 	private ItemDetailResponse loadDiskDetail(String cacheKey)
@@ -288,7 +366,7 @@ public class ItemsClient
 
 		for (FlipOpportunity opp : response.getOpportunities())
 		{
-			mergeOpportunity(opp, updatedAt);
+			mergeOpportunity(opp, updatedAt, response.getMeta());
 		}
 
 		if (response.getMeta() != null)
@@ -308,18 +386,16 @@ public class ItemsClient
 		);
 	}
 
-	private void scheduleWikiRefreshFromItemMeta(ItemDetailResponse.ItemDetailMeta meta)
+	void mergeOpportunity(FlipOpportunity opp, long snapshotUpdatedAtMs)
 	{
-		long now = System.currentTimeMillis();
-		nextWikiRefreshAtMs = ClientSchedule.computeNextFetchAtMs(
-			meta,
-			publishLeadMs,
-			refreshIntervalMs,
-			now
-		);
+		mergeOpportunity(opp, snapshotUpdatedAtMs, null);
 	}
 
-	void mergeOpportunity(FlipOpportunity opp, long snapshotUpdatedAtMs)
+	private void mergeOpportunity(
+		FlipOpportunity opp,
+		long snapshotUpdatedAtMs,
+		MarketQueryResponse.Meta marketMeta
+	)
 	{
 		if (opp == null)
 		{
@@ -341,6 +417,12 @@ public class ItemsClient
 			detail.setMeta(meta);
 		}
 		meta.setLastUpdatedMs(snapshotUpdatedAtMs);
+		if (marketMeta != null)
+		{
+			meta.setNextPublishInMs(marketMeta.getNextPublishInMs());
+			meta.setNextWikiPublishAtMs(marketMeta.getNextWikiPublishAtMs());
+			meta.setPhaseConfidence(marketMeta.getPhaseConfidence());
+		}
 		putMemory(opp.getId(), detail, snapshotUpdatedAtMs, true);
 	}
 
@@ -348,11 +430,29 @@ public class ItemsClient
 	{
 		memory.clear();
 		historyLoaded.clear();
+		watchedItemIds.clear();
+		fetchLocks.clear();
+		nextWikiRefreshAtMs = 0L;
 	}
 
 	private void putMemory(int itemId, ItemDetailResponse detail, long snapshotUpdatedAtMs, boolean notify)
 	{
-		memory.put(itemId, new MemoryEntry(detail, snapshotUpdatedAtMs));
+		long now = System.currentTimeMillis();
+		MemoryEntry entry = new MemoryEntry(detail, snapshotUpdatedAtMs, now);
+		long nextFetchAtMs = computeNextFetchAtMs(entry, now);
+		entry = new MemoryEntry(detail, snapshotUpdatedAtMs, now, nextFetchAtMs);
+		memory.put(itemId, entry);
+		if (nextFetchAtMs > 0)
+		{
+			if (nextWikiRefreshAtMs <= 0)
+			{
+				nextWikiRefreshAtMs = nextFetchAtMs;
+			}
+			else
+			{
+				nextWikiRefreshAtMs = Math.min(nextWikiRefreshAtMs, nextFetchAtMs);
+			}
+		}
 		if (notify)
 		{
 			for (IntConsumer listener : updateListeners)
@@ -369,17 +469,45 @@ public class ItemsClient
 		}
 	}
 
+	private long computeNextFetchAtMs(MemoryEntry entry, long nowMs)
+	{
+		ItemDetailResponse detail = entry.detail;
+		ItemDetailResponse.ItemDetailMeta meta = detail != null ? detail.getMeta() : null;
+		if (meta != null)
+		{
+			return ClientSchedule.computeNextFetchAtMs(
+				ClientSchedule.decayItemMeta(meta, entry.fetchedAtMs, nowMs),
+				publishLeadMs,
+				refreshIntervalMs,
+				nowMs
+			);
+		}
+		return entry.fetchedAtMs + refreshIntervalMs;
+	}
+
 	private static final class MemoryEntry
 	{
 		private final ItemDetailResponse detail;
 		private final long snapshotUpdatedAtMs;
 		private final long fetchedAtMs;
+		private final long nextFetchAtMs;
 
-		private MemoryEntry(ItemDetailResponse detail, long snapshotUpdatedAtMs)
+		private MemoryEntry(ItemDetailResponse detail, long snapshotUpdatedAtMs, long fetchedAtMs)
+		{
+			this(detail, snapshotUpdatedAtMs, fetchedAtMs, 0L);
+		}
+
+		private MemoryEntry(
+			ItemDetailResponse detail,
+			long snapshotUpdatedAtMs,
+			long fetchedAtMs,
+			long nextFetchAtMs
+		)
 		{
 			this.detail = detail;
 			this.snapshotUpdatedAtMs = snapshotUpdatedAtMs;
-			this.fetchedAtMs = System.currentTimeMillis();
+			this.fetchedAtMs = fetchedAtMs;
+			this.nextFetchAtMs = nextFetchAtMs;
 		}
 	}
 }
