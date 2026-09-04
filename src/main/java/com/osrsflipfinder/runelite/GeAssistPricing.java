@@ -2,7 +2,7 @@ package com.osrsflipfinder.runelite;
 
 import javax.annotation.Nullable;
 
-/** Resolves GE chatbox assist prices from wiki-aligned FlipX estimates. */
+/** Resolves GE assist prices from wiki-aligned FlipX estimates. */
 final class GeAssistPricing
 {
 	enum PriceSource

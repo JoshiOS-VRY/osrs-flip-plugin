@@ -4,67 +4,30 @@ import net.runelite.api.Client;
 import net.runelite.api.MenuAction;
 import net.runelite.api.widgets.Widget;
 
-/**
- * Native GE widget clicks for quantity/price stepping (no meslayer).
- */
+/** Activates a visible GE setup widget op (same CC_OP the user can click). */
 final class GeOfferSetupNative
 {
 	private GeOfferSetupNative()
 	{
 	}
 
-	static Click pickQuantityClick(Widget setup, int delta)
+	/**
+	 * @return {@code true} when the widget has {@code option} and the click was sent
+	 */
+	static boolean clickWidget(Client client, Widget widget, String option)
 	{
-		GeSetupWidgetSearch.RowBand row = GeSetupWidgetSearch.quantityRow();
-		if (delta > 0)
+		if (client == null || widget == null || option == null || option.isBlank())
 		{
-			if (delta >= 1000)
-			{
-				Click c = clickForAction(setup, "+1K", row);
-				if (c != null)
-				{
-					return c;
-				}
-			}
-			if (delta >= 100)
-			{
-				Click c = clickForAction(setup, "+100", row);
-				if (c != null)
-				{
-					return c;
-				}
-			}
-			if (delta >= 10)
-			{
-				Click c = clickForAction(setup, "+10", row);
-				if (c != null)
-				{
-					return c;
-				}
-			}
-			return clickForAction(setup, "+1", row);
+			return false;
 		}
-		if (delta <= -100)
+		if (widget.isHidden())
 		{
-			Click c = clickForAction(setup, "-100", row);
-			if (c != null)
-			{
-				return c;
-			}
+			return false;
 		}
-		if (delta <= -10)
+		if (!hasAction(widget, option))
 		{
-			Click c = clickForAction(setup, "-10", row);
-			if (c != null)
-			{
-				return c;
-			}
+			return false;
 		}
-		return clickForAction(setup, "-1", row);
-	}
-
-	static void clickWidget(Client client, Widget widget, String option)
-	{
 		client.menuAction(
 			widget.getIndex(),
 			widget.getId(),
@@ -74,27 +37,27 @@ final class GeOfferSetupNative
 			option,
 			""
 		);
+		return true;
 	}
 
-	private static Click clickForAction(Widget setup, String action, GeSetupWidgetSearch.RowBand row)
+	static boolean hasAction(Widget widget, String option)
 	{
-		Widget widget = GeSetupWidgetSearch.findByAction(setup, action, row);
-		if (widget == null)
+		if (widget == null || option == null)
 		{
-			return null;
+			return false;
 		}
-		return new Click(widget, action);
-	}
-
-	static final class Click
-	{
-		final Widget widget;
-		final String option;
-
-		Click(Widget widget, String option)
+		String[] actions = widget.getActions();
+		if (actions == null)
 		{
-			this.widget = widget;
-			this.option = option;
+			return false;
 		}
+		for (String action : actions)
+		{
+			if (option.equals(action))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 }

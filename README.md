@@ -5,7 +5,7 @@ RuneLite companion plugin for [FlipX](https://flipx.gg). It does two things once
 1. **Portfolio sync** — observes Grand Exchange offer changes in-game and syncs them to the web app for portfolio analytics, beat-the-market stats, and flip matching.
 2. **Market browsing** — brings the web app's discovery workflow into RuneLite: tier-scoped opportunities, quick presets, search, item detail, a slot optimizer, watchlist sync, and a display-only Grand Exchange copilot overlay.
 
-**This plugin does not automate trading.** It only uploads GE offer activity you already perform manually, and the Market features are read-only — no price injection, offer auto-fill, or click simulation.
+**This plugin does not automate trading.** It only uploads GE offer activity you already perform manually. Optional GE assist prefills the native Enter price / Enter quantity chatbox; you still press Enter and Confirm every offer. Market overlays are display-only.
 
 ## Prerequisites
 
@@ -95,7 +95,7 @@ Optional GE features (plugin settings):
 - **GE copilot overlay** — score, margins, insta buy/sell, reprice hints (Pro)
 - **GE slot tooltips** — hover a slot tab on the main GE grid for FlipX score, margins, and reprice hints (display-only; on by default)
 - **GE slot highlights** — colored borders when an offer needs attention
-- **FlipX GE price buttons** — clickable FlipX buy/sell in the GE price chatbox (Pro; you still confirm)
+- **FlipX GE assist buttons** — FlipX icons on the GE setup panel open Enter quantity/price and prefill the suggestion (you still press Enter and Confirm)
 - **Watchlist GE hint** — type `1` in GE search to see favorites list
 
 Works alongside Flipping Utilities: import FU JSON on the web or in-plugin; FlipX adds cloud analytics and market discovery FU does not provide.

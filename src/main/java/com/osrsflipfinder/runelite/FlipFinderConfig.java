@@ -89,7 +89,7 @@ public interface FlipFinderConfig extends Config
 	@ConfigItem(
 		keyName = "enableGePriceAssist",
 		name = "Enable FlipX GE assist buttons",
-		description = "GE setup panel: FlipX icon on quantity (buy limit, buy offers) and on Guide price (FlipX buy/sell price). Chatbox: same prices and buy limit on quantity step. Elite uses network medians when available.",
+		description = "GE setup panel: FlipX icon on quantity (buy limit, buy offers) and on Guide price (FlipX buy/sell price). Clicking opens the native Enter quantity/price chatbox and prefills the suggestion; you still press Enter and Confirm. Pro uses network medians when available.",
 		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
 	)
 	default boolean enableGePriceAssist()

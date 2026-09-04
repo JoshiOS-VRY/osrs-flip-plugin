@@ -88,7 +88,7 @@ FlipX additionally: production API at `https://www.flipx.gg`, privacy at [flipx.
   - What the plugin does
   - Link to privacy policy
   - That network features are **opt-in**
-  - That there is **no automation** (no clicking GE, no price injection)
+  - That there is **no automation** (does not place or confirm offers; optional assist only prefills the native Enter price/quantity chatbox)
   - Any non-obvious behavior (e.g. optional backfill from RuneLite’s saved GE history when upload is enabled)
 
 **Keep a single PR.** If review asks for fixes, push to your plugin repo, then update only `commit=` in the same hub PR. Opening many PRs spams reviewers.
@@ -148,7 +148,7 @@ These patterns align with what hub review typically wants for GE-related tools:
 
 | Pattern | FlipX approach |
 | ------- | -------------- |
-| No automation | Overlays are display-only; optional **GE assist icons** use the same GE widget actions you could click yourself (Enter quantity, Enter price, qty +/-). You still **Confirm** every offer — nothing is placed automatically |
+| No automation | Overlays are display-only; optional **GE assist icons** open the native Enter quantity / Enter price chatbox and prefill the suggestion. You still press **Enter** and **Confirm** every offer — nothing is placed or submitted automatically |
 | Opt-in network | Upload, market, copilot, watchlist hints default **off**; RuneLite **IP warnings** on enabling |
 | Pairing gate | User must enable upload **or** market in config (with warnings) before **Connect** sends data |
 | Third-party API | Fixed production host; privacy policy; open source |

@@ -3,6 +3,7 @@ package com.osrsflipfinder.runelite;
 import java.awt.image.BufferedImage;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -10,28 +11,27 @@ import net.runelite.api.Client;
 import net.runelite.api.ScriptID;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ScriptPostFired;
-import net.runelite.api.events.ScriptPreFired;
-import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
-import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.JavaScriptCallback;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetPositionMode;
+import net.runelite.api.widgets.WidgetSizeMode;
 import net.runelite.api.widgets.WidgetType;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStats;
 import net.runelite.client.util.ImageUtil;
 
 /**
  * FlipX icons on the GE setup panel: buy-limit on the quantity row (buy only) and
- * suggested price on the Guide price slot (buy and sell). Uses Jagex clientscripts
- * {@code ge_offers_setup_changequantity} (777) when available; otherwise Enter-quantity meslayer
- * (same as manual X amount). Price uses script 778 when the GE tail is captured, otherwise
- * Enter-price meslayer (async fallback). +/- stepping is last resort only.
+ * suggested price on the Guide price slot (buy and sell). Clicking an icon opens the
+ * native Enter quantity / Enter price chatbox and prefills the suggestion. You still
+ * press Enter and Confirm — nothing is submitted for you.
  */
 @Slf4j
 @Singleton
@@ -40,13 +40,13 @@ class GeFlipxSetupAssist
 	private static final int GE_OFFERS_GROUP = 465;
 	/** Clientscript wrapper; {@link ScriptID#GE_OFFERS_SETUP_BUILD} is the proc it calls. */
 	private static final int GE_OFFERS_SETUP_DRAW_CLIENTSCRIPT = 776;
-	/** Fired when GE price/count meslayer chat opens after Enter price (Flipping Utilities). */
+	/** Fired when GE price/count meslayer chat opens after Enter price. */
 	private static final int CS_MESLAYER_CHAT_OPEN = 108;
 	private static final int GE_BTN = 35;
 	private static final int ICON_W = 14;
 	private static final int ICON_H = 12;
-	private static final double BTN_SCALE = 0.72;
 	private static final int FLIPX_GE_BUTTON_SPRITE = 0x7f1_0001;
+	private static final int MAX_PREFILL_TICKS = 8;
 
 	private final Client client;
 	private final ClientThread clientThread;
@@ -58,22 +58,16 @@ class GeFlipxSetupAssist
 	private final CoinBalanceService coinBalanceService;
 	private final ScheduledExecutorService executorService;
 
-	/** Optional script-777 tail when captured from a native GE click. */
 	private Widget quantityButton;
+	private Widget quantityLabel;
 	private Widget priceButton;
+	private Widget priceLabel;
 	private volatile int pendingBuyLimitItemId = -1;
 	private volatile int lastSetupItemId = -1;
 	private volatile int pendingPriceItemId = -1;
-	private volatile int pendingQuantityTarget = -1;
-	private volatile int pendingPriceTarget = -1;
-	private static final int MAX_APPLY_TICKS = 48;
-	private int quantityTicksRemaining;
-	private int priceTicksRemaining;
-	private final GeOfferSetupExactPrice.PriceApplyState priceApplyState =
-		new GeOfferSetupExactPrice.PriceApplyState();
-	private final GeOfferSetupExactQuantity.QuantityApplyState quantityApplyState =
-		new GeOfferSetupExactQuantity.QuantityApplyState();
-	private volatile boolean quantityNativeFallback;
+	private volatile int pendingChatValue = -1;
+	private volatile GeOfferChatInput.Step pendingChatStep = GeOfferChatInput.Step.NONE;
+	private int pendingChatTicks;
 
 	@Inject
 	GeFlipxSetupAssist(
@@ -100,9 +94,22 @@ class GeFlipxSetupAssist
 	}
 
 	@Subscribe
-	public void onScriptPreFired(ScriptPreFired event)
+	public void onConfigChanged(ConfigChanged event)
 	{
-		GeSetupScriptTail.tryCapture(event);
+		if (!FlipFinderConfig.GROUP.equals(event.getGroup()))
+		{
+			return;
+		}
+		clientThread.invokeLater(() ->
+		{
+			if (!isFeatureEnabled())
+			{
+				hideButtons();
+				clearAppliedOfferState();
+				return;
+			}
+			scheduleAttachButtons();
+		});
 	}
 
 	@Subscribe
@@ -113,18 +120,9 @@ class GeFlipxSetupAssist
 			scheduleAttachButtons();
 			return;
 		}
-		if (event.getScriptId() == CS_MESLAYER_CHAT_OPEN)
+		if (event.getScriptId() == CS_MESLAYER_CHAT_OPEN && pendingChatValue > 0)
 		{
-			if (pendingPriceTarget > 0
-				&& GeOfferSetupExactPrice.needsAsyncContinuation(priceApplyState))
-			{
-				clientThread.invokeLater(this::continuePriceApplyOneShot);
-			}
-			if (pendingQuantityTarget > 0
-				&& GeOfferSetupExactQuantity.needsAsyncContinuation(quantityApplyState))
-			{
-				clientThread.invokeLater(this::continueQuantityApplyOneShot);
-			}
+			clientThread.invokeLater(this::tryFinishPendingChatPrefill);
 		}
 	}
 
@@ -148,6 +146,8 @@ class GeFlipxSetupAssist
 	{
 		if (!isFeatureEnabled())
 		{
+			hideButtons();
+			clearAppliedOfferState();
 			return;
 		}
 		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
@@ -160,72 +160,30 @@ class GeFlipxSetupAssist
 		int itemId = GeItemResolver.resolve(client);
 		if (itemId > 0 && itemId != lastSetupItemId)
 		{
-			cancelQuantityApply();
-			hideButtons();
+			clearPendingChat();
 			scheduleAttachButtons();
 			return;
 		}
-		if (quantityButton == null || priceButton == null)
+		if (!hasLiveButtons(setup))
 		{
-			if (needsAssistButtons())
-			{
-				scheduleAttachButtons();
-			}
+			scheduleAttachButtons();
 		}
-		runPendingSetupApplies(setup);
+		tryFinishPendingChatPrefill();
 	}
 
-	private void runPendingSetupApplies(Widget setup)
+	private boolean hasLiveButtons(Widget setup)
 	{
-		if (pendingQuantityTarget > 0)
+		boolean buyOffer = isBuyOfferSetup();
+		boolean priceLive = isLiveButton(priceButton, setup);
+		if (!priceLive)
 		{
-			if (quantityTicksRemaining-- <= 0)
-			{
-				cancelQuantityApply();
-			}
-			else if (quantityApplyState.phase != GeOfferSetupExactQuantity.Phase.IDLE)
-			{
-				continueQuantityApplyOneShot();
-			}
-			else if (quantityNativeFallback)
-			{
-				runQuantityNativeFallbackOnce();
-			}
+			return false;
 		}
-		if (pendingPriceTarget > 0 && priceApplyState.phase != GeOfferSetupExactPrice.Phase.IDLE)
+		if (buyOffer)
 		{
-			if (priceTicksRemaining-- <= 0)
-			{
-				GeOfferSetupExactPrice.finishFailed(client, priceApplyState);
-				pendingPriceTarget = -1;
-			}
-			else
-			{
-				runPriceStepOnce();
-			}
-		}
-	}
-
-	private boolean needsAssistButtons()
-	{
-		if (priceButton != null)
-		{
-			return isBuyOfferSetup() && quantityButton == null;
+			return isLiveButton(quantityButton, setup);
 		}
 		return true;
-	}
-
-	@Subscribe
-	public void onVarbitChanged(VarbitChanged event)
-	{
-		if (!isFeatureEnabled())
-		{
-			return;
-		}
-		if (event.getVarbitId() == VarbitID.GE_NEWOFFER_TYPE)
-		{
-			GeSetupScriptTail.clear();
-		}
 	}
 
 	private void scheduleAttachButtons()
@@ -252,11 +210,7 @@ class GeFlipxSetupAssist
 			hideButtons();
 			return;
 		}
-		if (itemId != lastSetupItemId)
-		{
-			lastSetupItemId = itemId;
-			GeSetupScriptTail.clear();
-		}
+		lastSetupItemId = itemId;
 
 		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
 		if (setup == null || setup.isSelfHidden())
@@ -273,17 +227,12 @@ class GeFlipxSetupAssist
 		}
 
 		boolean buyOffer = isBuyOfferSetup();
-		boolean missingQty = buyOffer && quantityButton == null;
-		boolean missingPrice = priceButton == null;
-		if (!missingQty && !missingPrice)
+		if (!buyOffer && isLiveButton(quantityButton, setup))
 		{
-			GeSetupScriptTail.tryBootstrapFromSetup(setup);
-			return;
-		}
-
-		if (missingQty || missingPrice)
-		{
-			hideButtons();
+			hideWidget(quantityButton);
+			hideWidget(quantityLabel);
+			quantityButton = null;
+			quantityLabel = null;
 		}
 
 		if (buyOffer)
@@ -291,13 +240,21 @@ class GeFlipxSetupAssist
 			Widget qtyAnchor = findQuantityPluginAnchor(setup);
 			if (qtyAnchor != null)
 			{
+				stealNativeSlot(qtyAnchor);
 				hidePlus1kLabel(setup, qtyAnchor);
-				quantityButton = attachIconButton(
+				quantityButton = ensureIconButton(
 					setup,
+					quantityButton,
 					qtyAnchor,
+					true,
 					"FlipX buy limit",
 					() -> onBuyLimitClicked(itemId)
 				);
+				quantityLabel = ensureIconLabel(setup, quantityLabel, true);
+			}
+			else
+			{
+				quantityButton = null;
 			}
 		}
 
@@ -305,15 +262,20 @@ class GeFlipxSetupAssist
 		if (priceAnchor != null)
 		{
 			String action = buyOffer ? "FlipX buy price" : "FlipX sell price";
-			priceButton = attachIconButton(
+			priceButton = ensureIconButton(
 				setup,
+				priceButton,
 				priceAnchor,
+				false,
 				action,
 				() -> onFlipxPriceClicked(itemId, buyOffer)
 			);
+			priceLabel = ensureIconLabel(setup, priceLabel, false);
 		}
-
-		GeSetupScriptTail.tryBootstrapFromSetup(setup);
+		else
+		{
+			priceButton = null;
+		}
 	}
 
 	private void prefetchSetupAssistData(int itemId)
@@ -356,38 +318,240 @@ class GeFlipxSetupAssist
 		});
 	}
 
-	private Widget attachIconButton(
+	private Widget ensureIconButton(
 		Widget setup,
+		Widget existing,
 		Widget anchor,
+		boolean quantitySlot,
 		String action,
 		Runnable onClick
 	)
 	{
-		int ax = anchor.getOriginalX();
-		int ay = anchor.getOriginalY();
-		int aw = anchor.getOriginalWidth() > 0 ? anchor.getOriginalWidth() : GE_BTN;
-		int ah = anchor.getOriginalHeight() > 0 ? anchor.getOriginalHeight() : GE_BTN;
-		int btnW = Math.max(ICON_W, (int) (aw * BTN_SCALE));
-		int btnH = Math.max(ICON_H, (int) (ah * BTN_SCALE));
-		ax += (aw - btnW) / 2;
-		ay += (ah - btnH) / 2;
-		aw = btnW;
-		ah = btnH;
+		if (isLiveButton(existing, setup))
+		{
+			applyNativeButtonBounds(existing, setup, anchor, quantitySlot);
+			bindButton(existing, action, onClick);
+			existing.setHidden(false);
+			existing.revalidate();
+			return existing;
+		}
+		return attachIconButton(setup, anchor, quantitySlot, action, onClick);
+	}
 
+	private Widget attachIconButton(
+		Widget setup,
+		Widget anchor,
+		boolean quantitySlot,
+		String action,
+		Runnable onClick
+	)
+	{
 		Widget btn = setup.createChild(-1, WidgetType.GRAPHIC);
-		btn.setOriginalWidth(aw);
-		btn.setOriginalHeight(ah);
-		btn.setOriginalX(ax);
-		btn.setOriginalY(ay);
-		btn.setSpriteId(FLIPX_GE_BUTTON_SPRITE);
+		Widget peer = findSizePeer(setup, quantitySlot);
+		int spriteId = peer != null ? peer.getSpriteId() : -1;
+		btn.setSpriteId(spriteId > 0 ? spriteId : FLIPX_GE_BUTTON_SPRITE);
 		btn.setHasListener(true);
 		btn.setNoClickThrough(true);
+		applyNativeButtonBounds(btn, setup, anchor, quantitySlot);
+		bindButton(btn, action, onClick);
+		btn.revalidate();
+		return btn;
+	}
+
+	private Widget ensureIconLabel(Widget setup, Widget existing, boolean quantitySlot)
+	{
+		ButtonMetrics metrics = nativeButtonMetrics(
+			setup,
+			quantitySlot ? findQuantityPluginAnchor(setup) : findGuidePriceAnchor(setup),
+			quantitySlot
+		);
+		if (metrics == null)
+		{
+			return existing;
+		}
+		Widget label = existing;
+		if (!isLiveButton(label, setup))
+		{
+			label = setup.createChild(-1, WidgetType.TEXT);
+		}
+		Widget style = findPeerLabel(setup, quantitySlot);
+		label.setText("X");
+		label.setHidden(false);
+		label.setNoClickThrough(false);
+		label.setHasListener(false);
+		if (style != null)
+		{
+			label.setFontId(style.getFontId());
+			label.setTextColor(style.getTextColor());
+			label.setXTextAlignment(style.getXTextAlignment());
+			label.setYTextAlignment(style.getYTextAlignment());
+		}
+		label.setWidthMode(WidgetSizeMode.ABSOLUTE);
+		label.setHeightMode(WidgetSizeMode.ABSOLUTE);
+		label.setXPositionMode(WidgetPositionMode.ABSOLUTE_LEFT);
+		label.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
+		label.setOriginalX(metrics.x);
+		label.setOriginalY(metrics.y);
+		label.setOriginalWidth(metrics.w);
+		label.setOriginalHeight(metrics.h);
+		label.revalidate();
+		return label;
+	}
+
+	private void bindButton(Widget btn, String action, Runnable onClick)
+	{
 		btn.setAction(0, action);
 		btn.setOnOpListener((JavaScriptCallback) ev ->
 			clientThread.invoke(onClick)
 		);
-		btn.revalidate();
-		return btn;
+	}
+
+	private static void applyNativeButtonBounds(
+		Widget btn,
+		Widget setup,
+		Widget slot,
+		boolean quantitySlot
+	)
+	{
+		ButtonMetrics metrics = nativeButtonMetrics(setup, slot, quantitySlot);
+		if (metrics == null)
+		{
+			return;
+		}
+		btn.setWidthMode(WidgetSizeMode.ABSOLUTE);
+		btn.setHeightMode(WidgetSizeMode.ABSOLUTE);
+		btn.setXPositionMode(WidgetPositionMode.ABSOLUTE_LEFT);
+		btn.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
+		btn.setOriginalWidth(metrics.w);
+		btn.setOriginalHeight(metrics.h);
+		btn.setOriginalX(metrics.x);
+		btn.setOriginalY(metrics.y);
+	}
+
+	static ButtonMetrics nativeButtonMetrics(Widget setup, Widget slot, boolean quantitySlot)
+	{
+		if (slot == null)
+		{
+			return null;
+		}
+		Widget sizePeer = findSizePeer(setup, quantitySlot);
+		int w = firstPositive(
+			sizePeer != null ? sizePeer.getWidth() : 0,
+			sizePeer != null ? sizePeer.getOriginalWidth() : 0,
+			slot.getWidth(),
+			slot.getOriginalWidth(),
+			GE_BTN
+		);
+		int h = firstPositive(
+			sizePeer != null ? sizePeer.getHeight() : 0,
+			sizePeer != null ? sizePeer.getOriginalHeight() : 0,
+			slot.getHeight(),
+			slot.getOriginalHeight(),
+			GE_BTN
+		);
+		int slotW = firstPositive(slot.getWidth(), slot.getOriginalWidth(), w);
+		int x = slot.getOriginalX();
+		int y = sizePeer != null ? sizePeer.getOriginalY() : slot.getOriginalY();
+		if (slotW > w)
+		{
+			x += (slotW - w) / 2;
+		}
+		return new ButtonMetrics(x, y, w, h);
+	}
+
+	static Widget findSizePeer(Widget setup, boolean quantitySlot)
+	{
+		String[] peers = quantitySlot
+			? new String[] { "+100", "+10", "+1" }
+			: new String[] { "-5%", "+5%", "-99%", "+99%" };
+		for (String action : peers)
+		{
+			Widget peer = GeSetupWidgetSearch.findByAction(setup, action);
+			if (peer != null && firstPositive(peer.getWidth(), peer.getOriginalWidth(), 0) > 0)
+			{
+				return peer;
+			}
+		}
+		return null;
+	}
+
+	static Widget findPeerLabel(Widget setup, boolean quantitySlot)
+	{
+		if (setup == null)
+		{
+			return null;
+		}
+		String[] texts = quantitySlot
+			? new String[] { "+100", "+10", "+1" }
+			: new String[] { "-5%", "+5%", "-99%", "+99%" };
+		Widget[] children = setup.getDynamicChildren();
+		if (children == null)
+		{
+			return null;
+		}
+		for (String text : texts)
+		{
+			for (Widget child : children)
+			{
+				if (child != null
+					&& child.getType() == WidgetType.TEXT
+					&& text.equals(child.getText()))
+				{
+					return child;
+				}
+			}
+		}
+		return null;
+	}
+
+	static int firstPositive(int... values)
+	{
+		for (int value : values)
+		{
+			if (value > 0)
+			{
+				return value;
+			}
+		}
+		return GE_BTN;
+	}
+
+	/**
+	 * Take over a native GE slot (+1K / Guide price) so leftover clicks cannot
+	 * fire the original op (notably +1K → quantity 1000).
+	 */
+	static void stealNativeSlot(Widget nativeBtn)
+	{
+		if (nativeBtn == null)
+		{
+			return;
+		}
+		nativeBtn.setHasListener(false);
+		String[] actions = nativeBtn.getActions();
+		if (actions != null)
+		{
+			for (int i = 0; i < actions.length; i++)
+			{
+				nativeBtn.setAction(i, null);
+			}
+		}
+		nativeBtn.setHidden(true);
+	}
+
+	static boolean isLiveButton(Widget button, Widget setup)
+	{
+		if (button == null || setup == null)
+		{
+			return false;
+		}
+		try
+		{
+			return !button.isHidden() && button.getParent() == setup;
+		}
+		catch (RuntimeException e)
+		{
+			return false;
+		}
 	}
 
 	static Widget findQuantityPluginAnchor(Widget setup)
@@ -488,6 +652,10 @@ class GeFlipxSetupAssist
 
 	private void onBuyLimitClicked(int itemId)
 	{
+		if (!isCurrentSetupItem(itemId))
+		{
+			return;
+		}
 		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
 		int clientBought = GeOfferSetupBuyProgress.parseBoughtSoFar(setup);
 
@@ -519,7 +687,7 @@ class GeFlipxSetupAssist
 				}
 				clientThread.invokeLater(() ->
 				{
-					if (itemId != pendingBuyLimitItemId)
+					if (itemId != pendingBuyLimitItemId || !isCurrentSetupItem(itemId))
 					{
 						return;
 					}
@@ -538,6 +706,10 @@ class GeFlipxSetupAssist
 
 	private void applyBuyLimitQuantity(int itemId, BuyLimitRemaining synced, int clientBoughtSoFar)
 	{
+		if (!isCurrentSetupItem(itemId))
+		{
+			return;
+		}
 		ItemStats stats = itemManager.getItemStats(itemId);
 		coinBalanceService.refresh();
 		int offerPriceGp = GeOfferSetupScripts.readOfferPriceGp(client);
@@ -552,13 +724,18 @@ class GeFlipxSetupAssist
 		);
 		if (qty <= 0)
 		{
+			log.debug("FlipX buy-limit qty is 0 for item {}", itemId);
 			return;
 		}
-		applyOfferQuantity(qty);
+		offerQuantity(qty);
 	}
 
 	private void onFlipxPriceClicked(int itemId, boolean buyOffer)
 	{
+		if (!isCurrentSetupItem(itemId))
+		{
+			return;
+		}
 		ItemDetailResponse detail = itemsClient.peek(itemId);
 		boolean missing = detail == null || detail.getOpportunity() == null;
 		if (!missing)
@@ -581,12 +758,15 @@ class GeFlipxSetupAssist
 				}
 				if (!applyAfterFetch)
 				{
-					pendingPriceItemId = -1;
+					if (itemId == pendingPriceItemId)
+					{
+						pendingPriceItemId = -1;
+					}
 					return;
 				}
 				clientThread.invokeLater(() ->
 				{
-					if (itemId != pendingPriceItemId && pendingPriceItemId != -1)
+					if (itemId != pendingPriceItemId || !isCurrentSetupItem(itemId))
 					{
 						return;
 					}
@@ -599,6 +779,10 @@ class GeFlipxSetupAssist
 
 	private void applyFlipxPrice(int itemId, boolean buyOffer)
 	{
+		if (!isCurrentSetupItem(itemId))
+		{
+			return;
+		}
 		ItemDetailResponse detail = itemsClient.peek(itemId);
 		if (detail == null || detail.getOpportunity() == null)
 		{
@@ -617,227 +801,158 @@ class GeFlipxSetupAssist
 			GeAssistPricing.geOfferPriceGp(resolved, buyOffer, detail.getOpportunity()),
 			Integer.MAX_VALUE
 		);
-		applyOfferPrice((int) price);
+		offerPrice((int) price);
 	}
 
-	private void applyOfferQuantity(int quantity)
+	private void offerQuantity(int quantity)
 	{
-		pendingPriceTarget = -1;
-		priceApplyState.phase = GeOfferSetupExactPrice.Phase.IDLE;
-		cancelQuantityApply();
+		offerChatValue(quantity, GeOfferChatInput.Step.QUANTITY_BUY, this::findEnterQuantityTarget);
+	}
 
+	private void offerPrice(int priceGp)
+	{
+		offerChatValue(priceGp, GeOfferChatInput.Step.PRICE, this::findEnterPriceTarget);
+	}
+
+	private void offerChatValue(
+		int value,
+		GeOfferChatInput.Step step,
+		Function<Widget, EnterTarget> findEnter
+	)
+	{
 		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		if (setup == null || setup.isSelfHidden())
+		if (setup == null || setup.isSelfHidden() || value <= 0)
 		{
 			return;
 		}
-		if (GeOfferSetupExactQuantity.isExactMatch(client, quantity))
-		{
-			return;
-		}
-		if (GeOfferSetupExactPrice.isMeslayerBusyForUser(client))
-		{
-			return;
-		}
-		if (GeOfferSetupScripts.applyQuantityViaScript(client, setup, quantity))
+		if (GeOfferChatInput.isOtherInputOpen(client))
 		{
 			return;
 		}
 
-		pendingQuantityTarget = quantity;
-		quantityNativeFallback = false;
-		GeOfferSetupExactQuantity.startApply(quantityApplyState, client);
-		if (quantityApplyState.phase == GeOfferSetupExactQuantity.Phase.IDLE)
+		boolean wantPrice = step == GeOfferChatInput.Step.PRICE;
+		if (wantPrice ? GeOfferChatInput.isQuantityOpen(client) : GeOfferChatInput.isPriceOpen(client))
 		{
-			startQuantityNativeFallback(quantity);
 			return;
 		}
-		quantityTicksRemaining = MAX_APPLY_TICKS;
-		continueQuantityApplyOneShot();
+		if (wantPrice ? GeOfferChatInput.isPriceOpen(client) : GeOfferChatInput.isQuantityOpen(client))
+		{
+			GeOfferChatInput.prefillIfStep(client, value, step);
+			clearPendingChat();
+			return;
+		}
+
+		if (pendingChatValue > 0 && pendingChatStep == step)
+		{
+			pendingChatValue = value;
+			pendingChatTicks = MAX_PREFILL_TICKS;
+			return;
+		}
+
+		EnterTarget enter = findEnter.apply(setup);
+		if (enter == null || !GeOfferSetupNative.clickWidget(client, enter.widget, enter.option))
+		{
+			log.debug("FlipX assist could not open native {} dialog", step);
+			return;
+		}
+		pendingChatValue = value;
+		pendingChatStep = step;
+		pendingChatTicks = MAX_PREFILL_TICKS;
 	}
 
-	private void startQuantityNativeFallback(int quantity)
+	private EnterTarget findEnterQuantityTarget(Widget setup)
 	{
-		pendingQuantityTarget = quantity;
-		quantityNativeFallback = true;
-		quantityTicksRemaining = MAX_APPLY_TICKS;
-		runQuantityNativeFallbackOnce();
+		Widget enter = findEnterQuantityButton(setup);
+		if (enter == null)
+		{
+			return null;
+		}
+		return new EnterTarget(enter, enterQuantityAction(setup, enter));
 	}
 
-	private void continueQuantityApplyOneShot()
+	private EnterTarget findEnterPriceTarget(Widget setup)
 	{
-		if (pendingQuantityTarget <= 0)
-		{
-			return;
-		}
-		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		if (setup == null || setup.isSelfHidden())
-		{
-			cancelQuantityApply();
-			return;
-		}
-		boolean done = GeOfferSetupExactQuantity.advanceUntilWait(
-			client,
+		Widget enter = GeSetupWidgetSearch.findByAction(
 			setup,
-			pendingQuantityTarget,
-			quantityApplyState
+			"Enter price",
+			GeSetupWidgetSearch.priceRow()
 		);
-		if (done)
+		if (enter == null)
 		{
-			if (GeOfferSetupExactQuantity.isExactMatch(client, pendingQuantityTarget))
+			enter = GeSetupWidgetSearch.findByAction(setup, "Enter price");
+		}
+		if (enter == null)
+		{
+			return null;
+		}
+		return new EnterTarget(enter, "Enter price");
+	}
+
+	private static Widget findEnterQuantityButton(Widget setup)
+	{
+		GeSetupWidgetSearch.RowBand row = GeSetupWidgetSearch.quantityRow();
+		for (String action : new String[] { "Enter quantity", "Enter amount" })
+		{
+			Widget hit = GeSetupWidgetSearch.findByAction(setup, action, row);
+			if (hit != null)
 			{
-				pendingQuantityTarget = -1;
-				return;
+				return hit;
 			}
-			if (quantityApplyState.phase == GeOfferSetupExactQuantity.Phase.IDLE)
+		}
+		return GeSetupWidgetSearch.findByAction(setup, "Enter quantity");
+	}
+
+	private static String enterQuantityAction(Widget setup, Widget enter)
+	{
+		GeSetupWidgetSearch.RowBand row = GeSetupWidgetSearch.quantityRow();
+		for (String action : new String[] { "Enter quantity", "Enter amount" })
+		{
+			if (GeSetupWidgetSearch.findByAction(setup, action, row) == enter)
 			{
-				startQuantityNativeFallback(pendingQuantityTarget);
+				return action;
 			}
+		}
+		String[] actions = enter.getActions();
+		return actions != null && actions.length > 0 && actions[0] != null
+			? actions[0]
+			: "Enter quantity";
+	}
+
+	private void tryFinishPendingChatPrefill()
+	{
+		if (pendingChatValue <= 0 || pendingChatStep == GeOfferChatInput.Step.NONE)
+		{
 			return;
 		}
-		if (GeOfferSetupExactQuantity.needsAsyncContinuation(quantityApplyState))
+		if (GeOfferChatInput.prefillIfStep(client, pendingChatValue, pendingChatStep))
 		{
-			if (--quantityTicksRemaining <= 0)
-			{
-				GeOfferSetupExactQuantity.finishFailed(client, quantityApplyState);
-				startQuantityNativeFallback(pendingQuantityTarget);
-			}
+			clearPendingChat();
+			return;
+		}
+		if (--pendingChatTicks <= 0)
+		{
+			clearPendingChat();
 		}
 	}
 
-	private void runQuantityNativeFallbackOnce()
+	private boolean isCurrentSetupItem(int itemId)
 	{
-		if (pendingQuantityTarget <= 0 || !quantityNativeFallback)
-		{
-			return;
-		}
-		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		if (setup == null || setup.isSelfHidden())
-		{
-			cancelQuantityApply();
-			return;
-		}
-		if (GeOfferSetupScripts.applyQuantityNativeBurst(
-			client,
-			setup,
-			pendingQuantityTarget
-		))
-		{
-			pendingQuantityTarget = -1;
-			quantityNativeFallback = false;
-		}
+		return itemId > 0 && itemId == GeItemResolver.resolve(client);
 	}
 
-	private void cancelQuantityApply()
+	private void clearPendingChat()
 	{
-		if (quantityApplyState.openedMeslayer)
-		{
-			GeOfferSetupMeslayer.abortIfOpen(client);
-		}
-		pendingQuantityTarget = -1;
-		quantityNativeFallback = false;
-		quantityApplyState.phase = GeOfferSetupExactQuantity.Phase.IDLE;
-		quantityApplyState.waitTicks = 0;
-		quantityApplyState.openedMeslayer = false;
-	}
-
-	private void applyOfferPrice(int priceGp)
-	{
-		if (GeOfferSetupExactPrice.isExactMatch(client, priceGp))
-		{
-			if (client.getVarcIntValue(VarClientID.MESLAYERMODE)
-				== GeOfferSetupExactPrice.MODE_PRICE_INPUT)
-			{
-				GeOfferSetupMeslayer.abortIfOpen(client);
-			}
-			pendingPriceTarget = -1;
-			priceApplyState.phase = GeOfferSetupExactPrice.Phase.IDLE;
-			priceApplyState.openedMeslayer = false;
-			return;
-		}
-		if (GeOfferSetupExactPrice.isMeslayerBusyForUser(client))
-		{
-			return;
-		}
-		if (priceApplyState.phase != GeOfferSetupExactPrice.Phase.IDLE)
-		{
-			GeOfferSetupExactPrice.finishFailed(client, priceApplyState);
-		}
-		cancelQuantityApply();
-
-		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		if (setup != null && !setup.isSelfHidden()
-			&& GeOfferSetupScripts.applyPriceOneShot(client, setup, priceGp))
-		{
-			pendingPriceTarget = -1;
-			priceApplyState.phase = GeOfferSetupExactPrice.Phase.IDLE;
-			priceApplyState.openedMeslayer = false;
-			return;
-		}
-
-		pendingPriceTarget = priceGp;
-		GeOfferSetupExactPrice.startApply(priceApplyState, client);
-		if (priceApplyState.phase == GeOfferSetupExactPrice.Phase.IDLE)
-		{
-			pendingPriceTarget = -1;
-			return;
-		}
-		priceTicksRemaining = MAX_APPLY_TICKS;
-		continuePriceApplyOneShot();
-	}
-
-	private void continuePriceApplyOneShot()
-	{
-		if (pendingPriceTarget <= 0)
-		{
-			return;
-		}
-		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		if (setup == null || setup.isSelfHidden())
-		{
-			pendingPriceTarget = -1;
-			GeOfferSetupExactPrice.finishFailed(client, priceApplyState);
-			return;
-		}
-		boolean done = GeOfferSetupExactPrice.advanceUntilWait(
-			client,
-			setup,
-			pendingPriceTarget,
-			priceApplyState
-		);
-		if (done)
-		{
-			pendingPriceTarget = -1;
-			return;
-		}
-		if (GeOfferSetupExactPrice.needsAsyncContinuation(priceApplyState))
-		{
-			if (--priceTicksRemaining <= 0)
-			{
-				GeOfferSetupExactPrice.finishFailed(client, priceApplyState);
-				pendingPriceTarget = -1;
-			}
-		}
-	}
-
-	private void runPriceStepOnce()
-	{
-		continuePriceApplyOneShot();
+		pendingChatValue = -1;
+		pendingChatStep = GeOfferChatInput.Step.NONE;
+		pendingChatTicks = 0;
 	}
 
 	private void clearAppliedOfferState()
 	{
-		if (priceApplyState.openedMeslayer)
-		{
-			GeOfferSetupMeslayer.abortIfOpen(client);
-		}
-		cancelQuantityApply();
+		clearPendingChat();
 		lastSetupItemId = -1;
-		pendingPriceTarget = -1;
-		priceApplyState.phase = GeOfferSetupExactPrice.Phase.IDLE;
-		priceApplyState.waitTicks = 0;
-		priceApplyState.openedMeslayer = false;
-		GeSetupScriptTail.clear();
+		pendingBuyLimitItemId = -1;
+		pendingPriceItemId = -1;
 	}
 
 	private boolean isBuyOfferSetup()
@@ -876,15 +991,56 @@ class GeFlipxSetupAssist
 
 	private void hideButtons()
 	{
-		if (quantityButton != null)
+		hideWidget(quantityButton);
+		hideWidget(quantityLabel);
+		hideWidget(priceButton);
+		hideWidget(priceLabel);
+		quantityButton = null;
+		quantityLabel = null;
+		priceButton = null;
+		priceLabel = null;
+	}
+
+	private static void hideWidget(Widget widget)
+	{
+		if (widget == null)
 		{
-			quantityButton.setHidden(true);
-			quantityButton = null;
+			return;
 		}
-		if (priceButton != null)
+		try
 		{
-			priceButton.setHidden(true);
-			priceButton = null;
+			widget.setHidden(true);
+		}
+		catch (RuntimeException ignored)
+		{
+		}
+	}
+
+	static final class ButtonMetrics
+	{
+		final int x;
+		final int y;
+		final int w;
+		final int h;
+
+		ButtonMetrics(int x, int y, int w, int h)
+		{
+			this.x = x;
+			this.y = y;
+			this.w = w;
+			this.h = h;
+		}
+	}
+
+	private static final class EnterTarget
+	{
+		final Widget widget;
+		final String option;
+
+		EnterTarget(Widget widget, String option)
+		{
+			this.widget = widget;
+			this.option = option;
 		}
 	}
 }

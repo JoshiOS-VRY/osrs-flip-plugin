@@ -65,9 +65,6 @@ public class OsrsFlipFinderPlugin extends Plugin
 	private GeSlotTooltipOverlay geSlotTooltipOverlay;
 
 	@Inject
-	private GeFlipxPriceAssist geFlipxPriceAssist;
-
-	@Inject
 	private GeFlipxSetupAssist geFlipxSetupAssist;
 
 	@Inject
@@ -89,7 +86,6 @@ public class OsrsFlipFinderPlugin extends Plugin
 		eventBus.register(geEventListener);
 		eventBus.register(coinBalanceService);
 		eventBus.register(geInterfaceListener);
-		eventBus.register(geFlipxPriceAssist);
 		eventBus.register(geFlipxSetupAssist);
 		eventBus.register(this);
 		ingestClient.start();
@@ -133,7 +129,6 @@ public class OsrsFlipFinderPlugin extends Plugin
 		eventBus.unregister(geEventListener);
 		eventBus.unregister(coinBalanceService);
 		eventBus.unregister(geInterfaceListener);
-		eventBus.unregister(geFlipxPriceAssist);
 		eventBus.unregister(geFlipxSetupAssist);
 		eventBus.unregister(this);
 		clientToolbar.removeNavigation(navButton);
