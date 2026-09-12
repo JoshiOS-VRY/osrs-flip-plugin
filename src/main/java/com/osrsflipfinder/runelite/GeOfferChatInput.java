@@ -35,7 +35,7 @@ final class GeOfferChatInput
 
 	/**
 	 * True when some other chat/meslayer input is open (not the GE price/qty box).
-	 * Assist must not click Enter price/quantity through that.
+	 * Assist must not prefill or remember a value through that.
 	 */
 	static boolean isOtherInputOpen(Client client)
 	{

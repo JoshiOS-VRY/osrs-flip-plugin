@@ -148,7 +148,7 @@ These patterns align with what hub review typically wants for GE-related tools:
 
 | Pattern | FlipX approach |
 | ------- | -------------- |
-| No automation | Overlays are display-only; optional **GE assist icons** open the native Enter quantity / Enter price chatbox and prefill the suggestion. You still press **Enter** and **Confirm** every offer — nothing is placed or submitted automatically |
+| No automation | Overlays are display-only; optional **GE assist icons** prefill the native Enter quantity / Enter price chatbox if it is already open (or remember the value until you open it). You still press **Enter** and **Confirm** every offer — nothing is placed or submitted automatically |
 | Opt-in network | Upload, market, copilot, watchlist hints default **off**; RuneLite **IP warnings** on enabling |
 | Pairing gate | User must enable upload **or** market in config (with warnings) before **Connect** sends data |
 | Third-party API | Fixed production host; privacy policy; open source |

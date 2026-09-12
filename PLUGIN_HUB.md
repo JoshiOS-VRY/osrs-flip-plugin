@@ -28,7 +28,7 @@ Reviewers verify the plugin against [Jagex third-party client guidelines](https:
 
 FlipX is designed to pass:
 
-- **No automation** — Does not place offers or auto-confirm. GE assist icons open the native Enter quantity / Enter price chatbox and prefill the suggestion; you still press Enter and Confirm every offer.
+- **No automation** — Does not place offers or auto-confirm. GE assist icons prefill the native Enter quantity / Enter price chatbox if it is already open (or remember the value until you open it); you still press Enter and Confirm every offer.
 - **Opt-in data upload** — GE sync disabled by default; user pairs with a web-generated code.
 - **Display-only overlays** — Copilot, charts, stagnation timers, and watchlist hints are read-only.
 - **Third-party server disclosed** — Config warnings on every feature that calls FlipX APIs.

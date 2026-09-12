@@ -3,7 +3,6 @@ package com.osrsflipfinder.runelite;
 import java.awt.image.BufferedImage;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -29,9 +28,9 @@ import net.runelite.client.util.ImageUtil;
 
 /**
  * FlipX icons on the GE setup panel: buy-limit on the quantity row (buy only) and
- * suggested price on the Guide price slot (buy and sell). Clicking an icon opens the
- * native Enter quantity / Enter price chatbox and prefills the suggestion. You still
- * press Enter and Confirm — nothing is submitted for you.
+ * suggested price on the Guide price slot (buy and sell). Clicking an icon prefills
+ * the native Enter quantity / Enter price chatbox if that dialog is already open,
+ * or remembers the value until you open it. You still press Enter and Confirm.
  */
 @Slf4j
 @Singleton
@@ -46,7 +45,6 @@ class GeFlipxSetupAssist
 	private static final int ICON_W = 14;
 	private static final int ICON_H = 12;
 	private static final int FLIPX_GE_BUTTON_SPRITE = 0x7f1_0001;
-	private static final int MAX_PREFILL_TICKS = 8;
 
 	private final Client client;
 	private final ClientThread clientThread;
@@ -67,7 +65,6 @@ class GeFlipxSetupAssist
 	private volatile int pendingPriceItemId = -1;
 	private volatile int pendingChatValue = -1;
 	private volatile GeOfferChatInput.Step pendingChatStep = GeOfferChatInput.Step.NONE;
-	private int pendingChatTicks;
 
 	@Inject
 	GeFlipxSetupAssist(
@@ -806,22 +803,22 @@ class GeFlipxSetupAssist
 
 	private void offerQuantity(int quantity)
 	{
-		offerChatValue(quantity, GeOfferChatInput.Step.QUANTITY_BUY, this::findEnterQuantityTarget);
+		offerChatValue(quantity, GeOfferChatInput.Step.QUANTITY_BUY);
 	}
 
 	private void offerPrice(int priceGp)
 	{
-		offerChatValue(priceGp, GeOfferChatInput.Step.PRICE, this::findEnterPriceTarget);
+		offerChatValue(priceGp, GeOfferChatInput.Step.PRICE);
 	}
 
-	private void offerChatValue(
-		int value,
-		GeOfferChatInput.Step step,
-		Function<Widget, EnterTarget> findEnter
-	)
+	private void offerChatValue(int value, GeOfferChatInput.Step step)
 	{
+		if (value <= 0)
+		{
+			return;
+		}
 		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		if (setup == null || setup.isSelfHidden() || value <= 0)
+		if (setup == null || setup.isSelfHidden())
 		{
 			return;
 		}
@@ -835,87 +832,14 @@ class GeFlipxSetupAssist
 		{
 			return;
 		}
-		if (wantPrice ? GeOfferChatInput.isPriceOpen(client) : GeOfferChatInput.isQuantityOpen(client))
+		if (GeOfferChatInput.prefillIfStep(client, value, step))
 		{
-			GeOfferChatInput.prefillIfStep(client, value, step);
 			clearPendingChat();
 			return;
 		}
 
-		if (pendingChatValue > 0 && pendingChatStep == step)
-		{
-			pendingChatValue = value;
-			pendingChatTicks = MAX_PREFILL_TICKS;
-			return;
-		}
-
-		EnterTarget enter = findEnter.apply(setup);
-		if (enter == null || !GeOfferSetupNative.clickWidget(client, enter.widget, enter.option))
-		{
-			log.debug("FlipX assist could not open native {} dialog", step);
-			return;
-		}
 		pendingChatValue = value;
 		pendingChatStep = step;
-		pendingChatTicks = MAX_PREFILL_TICKS;
-	}
-
-	private EnterTarget findEnterQuantityTarget(Widget setup)
-	{
-		Widget enter = findEnterQuantityButton(setup);
-		if (enter == null)
-		{
-			return null;
-		}
-		return new EnterTarget(enter, enterQuantityAction(setup, enter));
-	}
-
-	private EnterTarget findEnterPriceTarget(Widget setup)
-	{
-		Widget enter = GeSetupWidgetSearch.findByAction(
-			setup,
-			"Enter price",
-			GeSetupWidgetSearch.priceRow()
-		);
-		if (enter == null)
-		{
-			enter = GeSetupWidgetSearch.findByAction(setup, "Enter price");
-		}
-		if (enter == null)
-		{
-			return null;
-		}
-		return new EnterTarget(enter, "Enter price");
-	}
-
-	private static Widget findEnterQuantityButton(Widget setup)
-	{
-		GeSetupWidgetSearch.RowBand row = GeSetupWidgetSearch.quantityRow();
-		for (String action : new String[] { "Enter quantity", "Enter amount" })
-		{
-			Widget hit = GeSetupWidgetSearch.findByAction(setup, action, row);
-			if (hit != null)
-			{
-				return hit;
-			}
-		}
-		return GeSetupWidgetSearch.findByAction(setup, "Enter quantity");
-	}
-
-	private static String enterQuantityAction(Widget setup, Widget enter)
-	{
-		GeSetupWidgetSearch.RowBand row = GeSetupWidgetSearch.quantityRow();
-		for (String action : new String[] { "Enter quantity", "Enter amount" })
-		{
-			if (GeSetupWidgetSearch.findByAction(setup, action, row) == enter)
-			{
-				return action;
-			}
-		}
-		String[] actions = enter.getActions();
-		return actions != null && actions.length > 0 && actions[0] != null
-			? actions[0]
-			: "Enter quantity";
 	}
 
 	private void tryFinishPendingChatPrefill()
@@ -925,11 +849,6 @@ class GeFlipxSetupAssist
 			return;
 		}
 		if (GeOfferChatInput.prefillIfStep(client, pendingChatValue, pendingChatStep))
-		{
-			clearPendingChat();
-			return;
-		}
-		if (--pendingChatTicks <= 0)
 		{
 			clearPendingChat();
 		}
@@ -944,7 +863,6 @@ class GeFlipxSetupAssist
 	{
 		pendingChatValue = -1;
 		pendingChatStep = GeOfferChatInput.Step.NONE;
-		pendingChatTicks = 0;
 	}
 
 	private void clearAppliedOfferState()
@@ -1029,18 +947,6 @@ class GeFlipxSetupAssist
 			this.y = y;
 			this.w = w;
 			this.h = h;
-		}
-	}
-
-	private static final class EnterTarget
-	{
-		final Widget widget;
-		final String option;
-
-		EnterTarget(Widget widget, String option)
-		{
-			this.widget = widget;
-			this.option = option;
 		}
 	}
 }
