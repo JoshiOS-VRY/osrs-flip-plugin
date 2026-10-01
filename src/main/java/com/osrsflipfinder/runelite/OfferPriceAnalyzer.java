@@ -229,7 +229,7 @@ final class OfferPriceAnalyzer
 		int quantityFilled,
 		int totalQuantity,
 		long stagnationThresholdSec,
-		int unitFillPrice
+		long unitFillPrice
 	)
 	{
 		if (opp == null || offerPrice <= 0)

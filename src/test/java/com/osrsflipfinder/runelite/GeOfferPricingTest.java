@@ -17,7 +17,7 @@ public class GeOfferPricingTest
 	{
 		GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
 		when(offer.getQuantitySold()).thenReturn(1);
-		when(offer.getSpent()).thenReturn(6_709);
+		when(offer.getSpent()).thenReturn(6_709L);
 
 		assertEquals(6_709, GeOfferPricing.unitPrice(offer));
 	}
@@ -27,7 +27,7 @@ public class GeOfferPricingTest
 	{
 		GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
 		when(offer.getQuantitySold()).thenReturn(0);
-		when(offer.getPrice()).thenReturn(7_507);
+		when(offer.getPrice()).thenReturn(7_507L);
 
 		assertEquals(7_507, GeOfferPricing.unitPrice(offer));
 	}
@@ -37,7 +37,7 @@ public class GeOfferPricingTest
 	{
 		GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
 		when(offer.getQuantitySold()).thenReturn(1);
-		when(offer.getSpent()).thenReturn(6_881);
+		when(offer.getSpent()).thenReturn(6_881L);
 
 		assertEquals(6_881, GeOfferPricing.unitPrice(offer));
 	}

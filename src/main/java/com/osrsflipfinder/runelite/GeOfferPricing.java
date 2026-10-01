@@ -13,7 +13,7 @@ final class GeOfferPricing
 	{
 	}
 
-	static int unitPrice(GrandExchangeOffer offer)
+	static long unitPrice(GrandExchangeOffer offer)
 	{
 		if (offer == null)
 		{
@@ -23,7 +23,7 @@ final class GeOfferPricing
 		int filled = offer.getQuantitySold();
 		if (filled > 0)
 		{
-			int spent = offer.getSpent();
+			long spent = offer.getSpent();
 			if (spent > 0)
 			{
 				return spent / filled;
@@ -33,7 +33,7 @@ final class GeOfferPricing
 		return offer.getPrice();
 	}
 
-	static int limitPrice(GrandExchangeOffer offer)
+	static long limitPrice(GrandExchangeOffer offer)
 	{
 		return offer == null ? 0 : offer.getPrice();
 	}

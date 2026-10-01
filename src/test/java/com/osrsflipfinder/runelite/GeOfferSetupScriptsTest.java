@@ -1,7 +1,6 @@
 package com.osrsflipfinder.runelite;
 
 import net.runelite.api.Client;
-import net.runelite.api.gameval.VarbitID;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -11,11 +10,11 @@ import static org.mockito.Mockito.when;
 public class GeOfferSetupScriptsTest
 {
 	@Test
-	public void readOfferPriceGpReturnsVarbit()
+	public void readOfferPriceGpReturnsSetupVarp()
 	{
 		Client client = mock(Client.class);
-		when(client.getVarbitValue(VarbitID.GE_NEWOFFER_PRICE)).thenReturn(12_345);
-		assertEquals(12_345, GeOfferSetupScripts.readOfferPriceGp(client));
+		when(client.getVarpLongValue(GeOfferSetupScripts.GE_SETUP_PRICE_VARP)).thenReturn(12_345L);
+		assertEquals(12_345L, GeOfferSetupScripts.readOfferPriceGp(client));
 	}
 
 	@Test

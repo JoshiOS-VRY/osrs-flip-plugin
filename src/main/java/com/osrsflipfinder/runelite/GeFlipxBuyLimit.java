@@ -23,7 +23,7 @@ final class GeFlipxBuyLimit
 	 * coins at {@code offerPriceGp} when price and coins are known.
 	 *
 	 * @param clientBoughtSoFar from {@link GeOfferSetupBuyProgress}, or {@code -1} if unknown
-	 * @param offerPriceGp per-item price on the GE setup panel (varbit), or {@code <= 0} to skip coin cap
+	 * @param offerPriceGp per-item price on the GE setup panel, or {@code <= 0} to skip coin cap
 	 * @param inventoryCoins coins in inventory, or {@code < 0} to skip coin cap
 	 */
 	static int quantityToApply(
@@ -31,7 +31,7 @@ final class GeFlipxBuyLimit
 		int itemId,
 		@Nullable ItemStats itemStats,
 		int clientBoughtSoFar,
-		int offerPriceGp,
+		long offerPriceGp,
 		long inventoryCoins
 	)
 	{
@@ -49,7 +49,7 @@ final class GeFlipxBuyLimit
 		return quantityToApply(synced, itemId, itemStats, clientBoughtSoFar, 0, -1);
 	}
 
-	static int capByInventoryCoins(int limitQuantity, int offerPriceGp, long inventoryCoins)
+	static int capByInventoryCoins(int limitQuantity, long offerPriceGp, long inventoryCoins)
 	{
 		if (limitQuantity <= 0)
 		{
@@ -95,7 +95,7 @@ final class GeFlipxBuyLimit
 		return geLimit > 0 ? geLimit : 0;
 	}
 
-	/** @deprecated use {@link #quantityToApply(BuyLimitRemaining, int, ItemStats, int, int, long)} */
+	/** @deprecated use {@link #quantityToApply(BuyLimitRemaining, int, ItemStats, int, long, long)} */
 	static int quantityToApply(
 		@Nullable BuyLimitRemaining synced,
 		int itemId,

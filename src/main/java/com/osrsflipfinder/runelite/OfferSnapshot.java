@@ -8,14 +8,14 @@ final class OfferSnapshot
 {
 	private final GrandExchangeOfferState state;
 	private final int itemId;
-	private final int price;
+	private final long price;
 	private final int quantity;
 	private final int quantityFilled;
 
 	private OfferSnapshot(
 		GrandExchangeOfferState state,
 		int itemId,
-		int price,
+		long price,
 		int quantity,
 		int quantityFilled
 	)
@@ -82,7 +82,7 @@ final class OfferSnapshot
 		return itemId;
 	}
 
-	int getPrice()
+	long getPrice()
 	{
 		return price;
 	}

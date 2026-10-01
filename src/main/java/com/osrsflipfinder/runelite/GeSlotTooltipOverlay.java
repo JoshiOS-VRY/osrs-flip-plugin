@@ -105,8 +105,8 @@ class GeSlotTooltipOverlay extends Overlay
 			|| offer.getState() == GrandExchangeOfferState.BOUGHT;
 		int itemId = offer.getItemId();
 		String name = itemManager.getItemComposition(itemId).getName();
-		int limitPrice = GeOfferPricing.limitPrice(offer);
-		int unitFillPrice = GeOfferPricing.unitPrice(offer);
+		long limitPrice = GeOfferPricing.limitPrice(offer);
+		long unitFillPrice = GeOfferPricing.unitPrice(offer);
 		int filled = offer.getQuantitySold();
 		int totalQty = offer.getTotalQuantity();
 		FlipOpportunity opp = itemsClient.peekOpportunity(itemId);
@@ -163,8 +163,8 @@ class GeSlotTooltipOverlay extends Overlay
 	private static OfferPriceAnalyzer.Analysis analyze(
 		GrandExchangeOffer offer,
 		boolean isBuy,
-		int limitPrice,
-		int unitFillPrice,
+		long limitPrice,
+		long unitFillPrice,
 		FlipOpportunity opp,
 		boolean stagnant,
 		long inactive,

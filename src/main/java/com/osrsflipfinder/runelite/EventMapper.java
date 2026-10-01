@@ -41,7 +41,7 @@ public final class EventMapper
 		String side = mapSide(offerState);
 		String occurredAtIso = occurredAt.toString();
 		String accountHashValue = String.valueOf(accountHash);
-		int unitPrice = GeOfferPricing.unitPrice(offer);
+		long unitPrice = GeOfferPricing.unitPrice(offer);
 
 		String idempotencyKey = IdempotencyKeyBuilder.build(
 			accountHashValue,
@@ -141,7 +141,7 @@ public final class EventMapper
 			previous.getQuantity(),
 			previous.getQuantityFilled()
 		);
-		int unitPrice = previous.getPrice();
+		long unitPrice = previous.getPrice();
 		String occurredAtIso = occurredAt.toString();
 		String accountHashValue = String.valueOf(accountHash);
 		String idempotencyKey = IdempotencyKeyBuilder.build(

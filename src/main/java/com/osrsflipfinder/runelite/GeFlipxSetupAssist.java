@@ -709,7 +709,7 @@ class GeFlipxSetupAssist
 		}
 		ItemStats stats = itemManager.getItemStats(itemId);
 		coinBalanceService.refresh();
-		int offerPriceGp = GeOfferSetupScripts.readOfferPriceGp(client);
+		long offerPriceGp = GeOfferSetupScripts.readOfferPriceGp(client);
 		long inventoryCoins = coinBalanceService.getCoins();
 		int qty = GeFlipxBuyLimit.quantityToApply(
 			synced,

@@ -221,10 +221,10 @@ public class EventMapperTest
 		GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
 		when(offer.getState()).thenReturn(state);
 		when(offer.getItemId()).thenReturn(itemId);
-		when(offer.getPrice()).thenReturn(limitPrice);
+		when(offer.getPrice()).thenReturn((long) limitPrice);
 		when(offer.getTotalQuantity()).thenReturn(totalQuantity);
 		when(offer.getQuantitySold()).thenReturn(quantitySold);
-		when(offer.getSpent()).thenReturn(spent);
+		when(offer.getSpent()).thenReturn((long) spent);
 		return offer;
 	}
 }

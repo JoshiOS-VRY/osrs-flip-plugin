@@ -347,8 +347,8 @@ class MySlotsPanel extends SidebarContentPanel
 			|| offer.getState() == GrandExchangeOfferState.BOUGHT;
 		int itemId = offer.getItemId();
 		String name = itemManager.getItemComposition(itemId).getName();
-		int limitPrice = GeOfferPricing.limitPrice(offer);
-		int unitFillPrice = GeOfferPricing.unitPrice(offer);
+		long limitPrice = GeOfferPricing.limitPrice(offer);
+		long unitFillPrice = GeOfferPricing.unitPrice(offer);
 		int qtyFilled = offer.getQuantitySold();
 		int totalQty = offer.getTotalQuantity();
 		FlipOpportunity opp = itemsClient.peekOpportunity(itemId);

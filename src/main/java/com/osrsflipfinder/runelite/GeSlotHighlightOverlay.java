@@ -138,8 +138,8 @@ class GeSlotHighlightOverlay extends Overlay
 		}
 
 		boolean isBuy = offer.getState() == GrandExchangeOfferState.BUYING;
-		int limitPrice = GeOfferPricing.limitPrice(offer);
-		int unitFillPrice = GeOfferPricing.unitPrice(offer);
+		long limitPrice = GeOfferPricing.limitPrice(offer);
+		long unitFillPrice = GeOfferPricing.unitPrice(offer);
 		FlipOpportunity opp = itemsClient.peekOpportunity(offer.getItemId());
 
 		Color lockedLoss = lockedLossBorder(

@@ -10,7 +10,7 @@ public final class IdempotencyKeyBuilder
 		String accountHash,
 		int itemId,
 		String side,
-		int price,
+		long price,
 		int quantity,
 		int quantityFilled,
 		String state,
@@ -35,7 +35,7 @@ public final class IdempotencyKeyBuilder
 		String accountHash,
 		int itemId,
 		String side,
-		int price,
+		long price,
 		int quantity,
 		String state,
 		long epochSecond
